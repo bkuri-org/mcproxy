@@ -26,6 +26,9 @@ WORKDIR /app
 COPY --from=builder /root/.local /home/mcproxy/.local
 ENV PATH=/home/mcproxy/.local/bin:$PATH
 
+# Install curl for healthcheck (only tool available after shell/python removal)
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
+
 # SHELL REMOVAL - Security hardening for v4.2
 # Disable shell access to prevent arbitrary code execution
 # Only uv and node remain available for MCP servers
@@ -55,12 +58,12 @@ COPY --chown=mcproxy:mcproxy *.py .
 USER mcproxy
 
 # Expose the SSE endpoint port
-EXPOSE 12009
+EXPOSE 12010
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:12009/sse', timeout=5)" || exit 1
+# Health check (uses curl since python/shell are disabled for security)
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD curl -sf http://localhost:12010/health || exit 1
 
 # Run MCProxy
 ENTRYPOINT ["python", "main.py"]
-CMD ["--log", "--config", "/app/config/mcp-servers.json"]
+CMD ["--log", "--config", "/app/config/mcproxy.json"]

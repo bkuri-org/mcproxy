@@ -1,0 +1,224 @@
+# MCProxy Full Stack — docker-compose.yml
+#
+# Architecture:
+#   mcproxy       ← MCP gateway (SSE/HTTP), hardened container
+#   adapter-*     ← stdio-to-HTTP bridge for each MCP server
+#
+# Each adapter wraps a stdio MCP binary (npx, uvx, node, etc.)
+# and exposes it as HTTP on an internal port. The mcproxy connects
+# to them by container name over the shared mcproxy-net network.
+#
+# For bare-metal/Quadlet deployment, see mcproxy.container instead.
+# This compose file is the full-stack reference deployment.
+#
+# Usage:
+#   docker compose build mcproxy    # Build only the gateway
+#   docker compose build adapters   # Build all adapter services
+#   docker compose up -d            # Launch everything
+#
+# Ports:
+#   12010 ← mcproxy gateway (published to host)
+#   12020–12034 ← adapters (internal only)
+
+services:
+
+  # ── Gateway ───────────────────────────────────────────────────
+  mcproxy:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: mcproxy:latest
+    container_name: mcproxy
+    ports:
+      - "192.168.50.X:12010:12010"
+    volumes:
+      - ./config:/app/config:ro
+      - ./data:/app/data:rw
+      - ./cache:/app/cache:rw
+    environment:
+      - PYTHONUNBUFFERED=1
+    networks:
+      mcproxy-net:
+        ipv4_address: 10.90.0.20
+    command:
+      [
+        "--log",
+        "--port", "12010",
+        "--config", "/app/config/mcproxy.json"
+      ]
+    labels:
+      app: mcproxy
+      service: gateway
+      stack: core
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:12010/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    mem_limit: 512m
+
+  # ── Adapter Build Helper ──────────────────────────────────────
+  # Uses a permissive base (no shell/python disabling) since
+  # adapters need to spawn subprocesses (npx, uvx, node, python).
+  # Uses the same adapter.py code, just with a different Dockerfile.
+  x-adapter: &adapter-base
+    build:
+      context: .
+      dockerfile: Dockerfile.adapter
+    image: mcproxy-adapter:latest
+    networks:
+      - mcproxy-net
+    restart: unless-stopped
+    mem_limit: 256m
+
+  # ── Adapters ──────────────────────────────────────────────────
+
+  adapter-fear-greed:
+    <<: *adapter-base
+    container_name: adapter-fear-greed
+    ports:
+      - "127.0.0.1:12020:12020"
+    command: ["--port", "12020", "--host", "0.0.0.0", "--die-with-parent", "--",
+              "npx", "-y", "mcp-server-fear-greed"]
+
+  adapter-sequential-thinking:
+    <<: *adapter-base
+    container_name: adapter-sequential-thinking
+    ports:
+      - "127.0.0.1:12021:12021"
+    command: ["--port", "12021", "--host", "0.0.0.0", "--die-with-parent", "--",
+              "npx", "-y", "@modelcontextprotocol/server-sequential-thinking"]
+
+  adapter-atom-of-thoughts:
+    <<: *adapter-base
+    container_name: adapter-atom-of-thoughts
+    ports:
+      - "127.0.0.1:12022:12022"
+    command: ["--port", "12022", "--host", "0.0.0.0", "--die-with-parent", "--",
+              "node", "/app/servers/atom-of-thoughts/build/index.js"]
+    volumes:
+      - ./servers/atom-of-thoughts:/app/servers/atom-of-thoughts:ro
+
+  adapter-think-tool:
+    <<: *adapter-base
+    container_name: adapter-think-tool
+    ports:
+      - "127.0.0.1:12023:12023"
+    command: ["--port", "12023", "--host", "0.0.0.0", "--die-with-parent", "--",
+              "npx", "-y", "think-tool-mcp"]
+
+  adapter-coinstats:
+    <<: *adapter-base
+    container_name: adapter-coinstats
+    ports:
+      - "127.0.0.1:12024:12024"
+    command: ["--port", "12024", "--host", "0.0.0.0", "--die-with-parent", "--",
+              "npx", "-y", "@coinstats/coinstats-mcp"]
+
+  adapter-llms-txt:
+    <<: *adapter-base
+    container_name: adapter-llms-txt
+    ports:
+      - "127.0.0.1:12025:12025"
+    command: ["--port", "12025", "--host", "0.0.0.0", "--die-with-parent", "--",
+              "uvx", "mcpdoc",
+              "--urls", "LangGraph:https://langchain-ai.github.io/langgraph/llms.txt",
+              "--transport", "stdio"]
+
+  adapter-youtube:
+    <<: *adapter-base
+    container_name: adapter-youtube
+    ports:
+      - "127.0.0.1:12026:12026"
+    command: ["--port", "12026", "--host", "0.0.0.0", "--die-with-parent", "--",
+              "npx", "-y", "@anaisbetts/mcp-youtube"]
+
+  adapter-wikipedia:
+    <<: *adapter-base
+    container_name: adapter-wikipedia
+    ports:
+      - "127.0.0.1:12027:12027"
+    command: ["--port", "12027", "--host", "0.0.0.0", "--die-with-parent", "--",
+              "npx", "-y", "wikipedia-mcp"]
+
+  adapter-asset-price:
+    <<: *adapter-base
+    container_name: adapter-asset-price
+    ports:
+      - "127.0.0.1:12028:12028"
+    command: ["--port", "12028", "--host", "0.0.0.0", "--die-with-parent", "--",
+              "npx", "-y", "asset-price-mcp"]
+
+  adapter-pure-md:
+    <<: *adapter-base
+    container_name: adapter-pure-md
+    ports:
+      - "127.0.0.1:12029:12029"
+    command: ["--port", "12029", "--host", "0.0.0.0", "--die-with-parent", "--",
+              "npx", "-y", "puremd-mcp"]
+
+  adapter-perplexity:
+    <<: *adapter-base
+    container_name: adapter-perplexity
+    ports:
+      - "127.0.0.1:12030:12030"
+    command: ["--port", "12030", "--host", "0.0.0.0", "--die-with-parent", "--",
+              "uvx", "perplexity-mcp"]
+    environment:
+      - PERPLEXITY_MODEL=sonar
+      - PERPLEXITY_API_KEY=${PERPLEXITY_API_KEY}
+
+  adapter-coinmarketcap:
+    <<: *adapter-base
+    container_name: adapter-coinmarketcap
+    ports:
+      - "127.0.0.1:12031:12031"
+    command: ["--port", "12031", "--host", "0.0.0.0", "--die-with-parent", "--",
+              "python", "-m", "coin_api_mcp"]
+    environment:
+      - COINMARKETCAP_API_KEY=${CMC_API_KEY}
+
+  adapter-home-assistant:
+    <<: *adapter-base
+    container_name: adapter-home-assistant
+    ports:
+      - "127.0.0.1:12032:12032"
+    command: ["--port", "12032", "--host", "0.0.0.0", "--die-with-parent", "--",
+              "npx", "-y", "@coolver/home-assistant-mcp@latest"]
+    environment:
+      - HA_AGENT_URL=${HA_AGENT_URL:-http://192.168.50.99:8099}
+      - HA_AGENT_KEY=${HA_AGENT_KEY}
+
+  adapter-browser:
+    <<: *adapter-base
+    container_name: adapter-browser
+    ports:
+      - "127.0.0.1:12033:12033"
+    command: ["--port", "12033", "--host", "0.0.0.0", "--die-with-parent", "--",
+              "npx", "-y", "@agent360/browser-mcp"]
+
+  adapter-email:
+    <<: *adapter-base
+    container_name: adapter-email
+    ports:
+      - "127.0.0.1:12034:12034"
+    command: ["--port", "12034", "--host", "0.0.0.0", "--die-with-parent", "--",
+              "uvx", "--from", "mcp-email-server", "mcp-email-server", "stdio"]
+
+  # ── External Adapters (no containerized adapter needed) ──────
+  #
+  # These connect to existing external or bare-metal services:
+  #   jesse          → http://localhost:12011/mcp   (jesse MCP)
+  #   not_human_search → https://nothumansearch.ai/mcp
+  #   zilliqa_insights → https://insights.mcp.zilliqa.com/mcp
+  #
+  # They are defined directly in mcproxy.json with their URLs.
+
+networks:
+  mcproxy-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.90.0.0/24

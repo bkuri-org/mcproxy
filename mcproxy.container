@@ -8,41 +8,38 @@ Wants=network-online.target
 Image=localhost/mcproxy:latest
 ContainerName=mcproxy
 
-# Network: Use bridge instead of host for isolation
-Network=bridge
+# Network: lan-core for Caddy reverse proxy access + static IP
+# NOTE: Update PodmanArgs --ip to an available IP on your lan-core subnet
+Network=lan-core
+PodmanArgs=--ip=10.90.0.20
 
-# Mount configuration directory (read-only)
-Volume=/srv/containers/mcproxy/config:/app/config:ro
+# Expose on host IP so external clients (pi, 5ire, etc.) can connect
+# NOTE: Change 192.168.50.X to match the deployment server's IP
+PublishPort=192.168.50.X:12010:12010
 
-# Mount data directory for credentials DB and blocklist cache
-Volume=/srv/containers/mcproxy/data:/app/data:rw
-Volume=/srv/containers/mcproxy/cache:/app/cache:rw
+# Mount config (read-only), data + cache (read-write)
+Volume=/srv/containers/mcproxy/config:/app/config:ro,Z
+Volume=/srv/containers/mcproxy/data:/app/data:rw,Z
+Volume=/srv/containers/mcproxy/cache:/app/cache:rw,Z
 
-# Environment variables - pass directly instead of .env file
-# This prevents .env from being readable by container
+# Environment
 Environment=PYTHONUNBUFFERED=1
 
-# Working directory
-WorkingDirectory=/app
-
 # Run with logging to stdout
-Exec=python main.py --log --config /app/config/mcp-servers.json
+Exec=python main.py --log --port 12010 --config /app/config/mcproxy.json
 
-# Container labels
+# Labels
 Label=app=mcproxy
 Label=service=gateway
+Label=stack=core
 
-# Security settings - HARDENED v4.2
+# Security hardening
 NoNewPrivileges=true
 SecurityLabelDisable=false
-
-# Filesystem isolation
 ProtectHome=true
 ProtectSystem=strict
 PrivateTmp=true
 ReadOnlyRootfs=true
-
-# Drop all capabilities
 CapDrop=ALL
 
 # Resource limits
