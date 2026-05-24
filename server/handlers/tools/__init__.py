@@ -27,7 +27,7 @@ from .search import handle_search
 
 META_TOOLS: List[Dict[str, Any]] = [
     {
-        "name": "mcproxy",
+        "name": "dispatch",
         "description": "Unified tool: execute (run code), search (find tools), inspect (get schemas), help (get docs). "
         "Response: {status, result, stdout, traceback}. "
         "CRITICAL SYNTAX RULES for execute code: "

@@ -133,18 +133,60 @@ async def handle_initialize(
 
 
 async def handle_tools_list(
-    msg_id: Any, namespace: Optional[str] = None
+    msg_id: Any,
+    namespace: Optional[str] = None,
+    capability_registry: Optional[CapabilityRegistry] = None,
 ) -> Dict[str, Any]:
-    """Handle tools/list request - return meta-tools only (v2.0).
+    """Handle tools/list request - return dispatch meta-tool + per-server tools.
+
+    Returns the dispatch meta-tool plus individual upstream tools prefixed
+    with server name (e.g., perplexity_sonar__perplexity_search_web).
+    Tools are filtered by the connection's namespace/group.
 
     Args:
         msg_id: JSON-RPC message ID
         namespace: Optional namespace context for filtering
+        capability_registry: Capability registry for namespace resolution
 
     Returns:
-        MCP response with meta-tools list
+        MCP response with tools list
     """
-    return {"jsonrpc": "2.0", "id": msg_id, "result": {"tools": META_TOOLS}}
+    tools = list(META_TOOLS)  # Start with dispatch meta-tool
+
+    # Add per-server tools from manifest, filtered by namespace
+    if capability_registry and capability_registry._manifest:
+        allowed_servers = None
+        if namespace:
+            allowed_servers, _ = capability_registry.resolve_namespace_to_servers(
+                namespace
+            )
+
+        tools_by_server = capability_registry._manifest.get("tools_by_server", {})
+        for server_name, server_tools in tools_by_server.items():
+            # Skip servers not in this namespace/group
+            if allowed_servers is not None and server_name not in allowed_servers:
+                continue
+
+            for tool in server_tools:
+                if not isinstance(tool, dict) or "name" not in tool:
+                    continue
+
+                prefixed_name = f"{server_name}__{tool['name']}"
+                # Build a clean tool entry with the prefixed name
+                tool_entry = {
+                    "name": prefixed_name,
+                    "description": tool.get("description", ""),
+                    "inputSchema": tool.get("inputSchema", {}),
+                }
+                tools.append(tool_entry)
+
+    logger.info(
+        f"[TOOLS_LIST] Returning {len(tools)} tools "
+        f"({len(META_TOOLS)} meta + {len(tools) - len(META_TOOLS)} direct)"
+        f"{f' namespace={namespace}' if namespace else ''}"
+    )
+
+    return {"jsonrpc": "2.0", "id": msg_id, "result": {"tools": tools}}
 
 
 # ============================================================================
@@ -273,7 +315,11 @@ def create_message_handler(
                     capability_registry=capability_registry,
                 )
             elif method == "tools/list":
-                return await handle_tools_list(msg_id, namespace=header_ns)
+                return await handle_tools_list(
+                    msg_id,
+                    namespace=header_ns,
+                    capability_registry=capability_registry,
+                )
             elif method == "tools/call":
                 return await handle_tools_call(
                     msg_id,
