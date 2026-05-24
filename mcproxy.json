@@ -294,62 +294,49 @@
     }
   },
   "groups": {
-    "dev": {
+    "safe": {
       "namespaces": [
         "thinking",
         "docs"
       ]
     },
-    "dev_full": {
+    "default": {
       "namespaces": [
         "thinking",
         "docs",
         "web"
       ]
     },
-    "research": {
+    "broad": {
       "namespaces": [
         "thinking",
         "docs",
         "web",
         "financial",
-        "blockchain"
-      ]
-    },
-    "automation_full": {
-      "namespaces": [
-        "automation",
-        "web"
-      ]
-    },
-    "everything": {
-      "namespaces": [
-        "thinking",
-        "financial",
-        "docs",
-        "web",
-        "automation",
         "blockchain",
-        "!trading"
+        "home"
       ]
     },
-    "maxitrader": {
+    "full": {
       "namespaces": [
         "thinking",
-        "financial",
         "docs",
         "web",
+        "financial",
         "blockchain",
-        "!trading"
-      ]
-    },
-    "normal": {
-      "namespaces": [
         "automation",
-        "docs",
         "home",
+        "!trading"
+      ]
+    },
+    "trading": {
+      "namespaces": [
         "thinking",
-        "web"
+        "docs",
+        "web",
+        "financial",
+        "blockchain",
+        "!trading"
       ]
     }
   },
