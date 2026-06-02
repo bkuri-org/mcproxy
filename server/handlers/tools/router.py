@@ -11,6 +11,7 @@ from typing import Any, Callable, Dict, Optional
 from logging_config import get_logger
 from manifest import CapabilityRegistry
 from tool_aggregator import untransform_tool_name
+from utils.param_normalize import normalize_params
 
 from .execute import handle_execute, handle_trace
 from .help import handle_help
@@ -124,6 +125,28 @@ async def _handle_direct_call(
             logger.debug(
                 f"[DIRECT_CALL] Tool name untransformed: {tool} -> {upstream_tool}"
             )
+
+        # Normalize parameter names to match tool schema convention
+        # (snake_case <-> camelCase)
+        if capability_registry and capability_registry._manifest:
+            tools_by_server = capability_registry._manifest.get(
+                "tools_by_server", {}
+            )
+            server_tools = tools_by_server.get(server_name, [])
+            for t in server_tools:
+                if t.get("name") == upstream_tool:
+                    input_schema = t.get("inputSchema", {})
+                    if input_schema:
+                        normalized = normalize_params(
+                            server_name, upstream_tool, arguments, input_schema
+                        )
+                        if normalized is not arguments:
+                            logger.info(
+                                f"[PARAM_NORMALIZE] {server_name}__{upstream_tool}: "
+                                f"parameters normalized to match schema"
+                            )
+                            arguments = normalized
+                    break
 
         ns_context = f" namespace={namespace}" if namespace else ""
         logger.info(
