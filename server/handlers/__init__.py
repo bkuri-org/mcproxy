@@ -155,8 +155,13 @@ async def handle_tools_list(
     msg_id: Any,
     namespace: Optional[str] = None,
     capability_registry: Optional[CapabilityRegistry] = None,
+    params: Optional[Dict[str, Any]] = None,
+    config: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Handle tools/list request - return dispatch meta-tool + per-server tools.
+
+    Auto-truncates schemas when tool count exceeds list_brief_threshold (config).
+    Supports optional params for override: brief=true, full=true, max_tools=N.
 
     Returns the dispatch meta-tool plus individual upstream tools prefixed
     with server name (e.g., perplexity_sonar__perplexity_search_web).
@@ -166,11 +171,29 @@ async def handle_tools_list(
         msg_id: JSON-RPC message ID
         namespace: Optional namespace context for filtering
         capability_registry: Capability registry for namespace resolution
+        params: Optional params from JSON-RPC request (brief, full, max_tools)
+        config: mcproxy.json configuration (for list_brief_threshold)
 
     Returns:
         MCP response with tools list
     """
     tools = list(META_TOOLS)  # Start with dispatch meta-tool
+
+    # Resolve brief threshold and overrides
+    params = params or {}
+    config = config or {}
+    search_config = config.get("search", {})
+    list_brief_threshold = search_config.get("list_brief_threshold", 30)
+
+    # Allow client override: brief=true forces brief, full=true forces full schemas
+    explicit_brief = params.get("brief", False)
+    explicit_full = params.get("full", False)
+    explicit_max = params.get("max_tools", 0)  # 0 = no limit
+
+    # Track stats for response metadata
+    total_tools = 0
+    returned_tools = 0
+    skipped_by_server: Dict[str, int] = {}
 
     # Add per-server tools from manifest, filtered by namespace
     if capability_registry and capability_registry._manifest:
@@ -181,33 +204,97 @@ async def handle_tools_list(
             )
 
         tools_by_server = capability_registry._manifest.get("tools_by_server", {})
+
+        # First pass: count tools per server
+        server_tool_counts = {
+            name: len(tools)
+            for name, tools in tools_by_server.items()
+            if allowed_servers is None or name in allowed_servers
+        }
+        total_tools = sum(server_tool_counts.values())
+
+        # Determine detail mode
+        force_brief = explicit_brief or (
+            not explicit_full and total_tools > list_brief_threshold
+        )
+        server_collapse_threshold = max(20, list_brief_threshold // 2)
+
         for server_name, server_tools in tools_by_server.items():
-            # Skip servers not in this namespace/group
             if allowed_servers is not None and server_name not in allowed_servers:
                 continue
 
-            for tool in server_tools:
+            server_count = len(server_tools)
+
+            # Check if this server should be collapsed
+            should_collapse = force_brief and server_count > server_collapse_threshold
+
+            if should_collapse:
+                # Collapse server to a single summary entry
+                first_tool = server_tools[0] if server_tools else {}
+                transformed_name = transform_tool_name(server_name, first_tool.get("name", ""))
+                # Build server prefix for summary
+                prefix = f"{server_name}__"
+                # Extract category from first tool name
+                category = first_tool.get("name", "").split("_")[0] if first_tool.get("name", "") else ""
+                tool_entry = {
+                    "name": f"{prefix}*",
+                    "description": f"{server_count} tools for {server_name} management",
+                    "inputSchema": {},
+                    "_collapsed": True,
+                    "_tool_count": server_count,
+                }
+                tools.append(tool_entry)
+                returned_tools += 1
+                skipped_by_server[server_name] = server_count - 1
+                continue
+
+            for i, tool in enumerate(server_tools):
                 if not isinstance(tool, dict) or "name" not in tool:
                     continue
 
                 # Apply per-server prefix transforms
                 transformed_name = transform_tool_name(server_name, tool["name"])
                 prefixed_name = f"{server_name}__{transformed_name}"
-                # Build a clean tool entry with the prefixed name
-                tool_entry = {
+
+                tool_entry: Dict[str, Any] = {
                     "name": prefixed_name,
                     "description": tool.get("description", ""),
-                    "inputSchema": tool.get("inputSchema", {}),
                 }
+
+                # Only include inputSchema in non-brief mode
+                if not force_brief:
+                    tool_entry["inputSchema"] = tool.get("inputSchema", {})
+
                 tools.append(tool_entry)
+                returned_tools += 1
+
+    # Build response with metadata
+    result_data: Dict[str, Any] = {"tools": tools}
+
+    if total_tools > 0:
+        result_data["total"] = total_tools
+        result_data["returned"] = returned_tools
+        result_data["skipped"] = total_tools - returned_tools
+        if skipped_by_server:
+            result_data["skipped_servers"] = skipped_by_server
+
+    if force_brief:
+        result_data["brief"] = True
+        result_data["hint"] = (
+            f"Showing {returned_tools} of {total_tools} tools in brief mode. "
+            f"Use 'inspect' or 'search' to discover specific tools, "
+            f"or pass full=true to override."
+        )
 
     logger.info(
-        f"[TOOLS_LIST] Returning {len(tools)} tools "
-        f"({len(META_TOOLS)} meta + {len(tools) - len(META_TOOLS)} direct)"
+        f"[TOOLS_LIST] Returning {returned_tools}/{total_tools} tools "
+        f"({len(META_TOOLS)} meta + {returned_tools} direct)"
+        f"{' (brief)' if force_brief else ''}"
+        f"{' (collapsed: ' + str(len(skipped_by_server)) + ' servers)' if skipped_by_server else ''}"
         f"{f' namespace={namespace}' if namespace else ''}"
     )
 
-    return {"jsonrpc": "2.0", "id": msg_id, "result": {"tools": tools}}
+    return {"jsonrpc": "2.0", "id": msg_id, "result": result_data}
 
 
 # ============================================================================
@@ -340,6 +427,8 @@ def create_message_handler(
                     msg_id,
                     namespace=header_ns,
                     capability_registry=capability_registry,
+                    params=params,
+                    config=_mcproxy_config,
                 )
             elif method == "tools/call":
                 return await handle_tools_call(
