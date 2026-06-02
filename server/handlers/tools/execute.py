@@ -44,6 +44,35 @@ async def handle_execute(
     timeout_secs = params.get("timeout_secs")
     retries = params.get("retries", 0)
 
+    # === Thinking engine ===
+    think_param = params.get("think")
+    thinking_output: Optional[Dict[str, Any]] = None
+
+    if tool_executor is not None and mcproxy_config is not None:
+        from reasoning import ThinkEngine
+
+        engine = ThinkEngine(mcproxy_config, tool_executor)
+
+        if isinstance(think_param, str):
+            # Specific engine requested by name
+            thinking_output = await engine.think(code, engine_name=think_param)
+        elif think_param is True or (think_param is None and mcproxy_config.get("reasoning", {}).get("auto_think", {}).get("enabled", True)):
+            # Auto-think: analyze code and decide
+            analysis = engine.analyze_code(code)
+            if think_param is True or analysis.get("should_think"):
+                if think_param is True:
+                    logger.info(
+                        f"[EXECUTE] think=True, using default engine '{engine.default_engine}'"
+                    )
+                else:
+                    logger.info(
+                        f"[EXECUTE] auto-think triggered: {analysis.get('reason')}"
+                    )
+                thinking_output = await engine.think(
+                    code, analysis=analysis
+                )
+    # === End thinking engine ===
+
     log_ns = f" namespace={effective_namespace}" if effective_namespace else ""
     log_sess = f" session={session_id}" if session_id else ""
     logger.debug(f"[EXECUTE]{log_ns}{log_sess} timeout={timeout_secs}")
@@ -106,6 +135,10 @@ async def handle_execute(
                 f"[SLOW_TOOL]{log_ns}{log_sess} tool_time={tool_time_ms}ms "
                 f"overhead={overhead_ms}ms - slowness is from upstream MCP server, not mcproxy"
             )
+
+        # Include thinking output if the engine ran
+        if thinking_output is not None:
+            result["thinking"] = thinking_output
 
         content = [{"type": "text", "text": json.dumps(result)}]
         return {"jsonrpc": "2.0", "id": msg_id, "result": {"content": content}}

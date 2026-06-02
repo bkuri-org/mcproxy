@@ -292,6 +292,7 @@ async def handle_tools_call(
                 sandbox_executor=sandbox_executor,
                 session_manager=session_manager,
                 tool_executor=tool_executor,
+                mcproxy_config=mcproxy_config,
             )
 
         elif action == "search":
