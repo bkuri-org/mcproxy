@@ -17,14 +17,11 @@ logger = get_logger(__name__)
 
 # Per-tool cache: {(server, tool): convention}
 _convention_cache: Dict[Tuple[str, str], Optional[str]] = {}
-# Per-tool cache: {(server, tool): {camelCase -> snake_case (or vice versa)}}
-_mapping_cache: Dict[Tuple[str, str], Dict[str, str]] = {}
 
 
 def clear_cache() -> None:
     """Clear the normalization cache (e.g., on config reload)."""
     _convention_cache.clear()
-    _mapping_cache.clear()
     logger.debug("Parameter normalization cache cleared")
 
 
@@ -171,21 +168,25 @@ def normalize_params(
         Arguments dict with normalized parameter names.
         If no normalization is needed, returns the original dict unchanged.
     """
-    if not arguments or not input_schema:
+    if not arguments or input_schema is None:
         return arguments
 
     cache_key = (server_name, tool_name)
-    properties = input_schema.get("properties", {})
+    properties = input_schema.get("properties")
 
     if not properties:
         return arguments
 
-    # Check cache first
-    if cache_key in _mapping_cache:
-        mapping = _mapping_cache[cache_key]
-    else:
-        mapping = build_param_map(properties, arguments)
-        _mapping_cache[cache_key] = mapping
+    # Convention detection is cached per-tool (doesn't vary per call)
+    if cache_key not in _convention_cache:
+        schema_names = set(properties.keys())
+        _convention_cache[cache_key] = detect_convention(schema_names)
+
+    if _convention_cache[cache_key] is None:
+        return arguments  # Can't determine convention — leave as-is
+
+    # Mapping depends on which params were passed, compute fresh each call
+    mapping = build_param_map(properties, arguments)
 
     if not mapping:
         return arguments  # No normalization needed

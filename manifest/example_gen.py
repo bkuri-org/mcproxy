@@ -73,10 +73,10 @@ def generate_tool_example(
     Returns:
         A Python code string showing how to call this tool
     """
-    if not input_schema or not isinstance(input_schema, dict):
+    if input_schema is None or not isinstance(input_schema, dict):
         return f"api.server('{server_name}').{tool_name}(...)"
 
-    properties = input_schema.get("properties", {})
+    properties = input_schema.get("properties")
     required_params: List[str] = input_schema.get("required", [])
 
     if not properties:
