@@ -55,7 +55,11 @@ register_sse_endpoints(
 
 @app.post("/message")
 async def handle_message(request: Request) -> Dict[str, Any]:
-    """Handle MCP messages at /message endpoint."""
+    """Handle MCP messages at /message endpoint.
+
+    Stateless JSON-RPC handler — no auth check, no namespace resolution.
+    Suitable for direct clients (hermes, curl, scripts) that POST JSON-RPC.
+    """
     return await _handle_message(request)
 
 
@@ -66,21 +70,27 @@ async def health() -> Dict[str, Any]:
         "status": "healthy",
         "version": app.version,
         "protocol": "MCP over SSE",
-        "hint": "Use POST /sse with JSON-RPC, not REST endpoints",
+        "hint": "POST /message for JSON-RPC, GET /sse for SSE stream, not REST endpoints",
         "available_tools": ["mcproxy"],
         "endpoints": {
             "health": "GET /health",
-            "sse": "POST /sse (MCP JSON-RPC)",
-            "namespaced_sse": "POST /sse/{namespace} (MCP JSON-RPC)",
+            "message": "POST /message (JSON-RPC, no auth)",
+            "sse_post": "POST /sse (JSON-RPC, with auth + namespace)",
+            "sse_get": "GET /sse (SSE stream, POST /message for JSON-RPC)",
+            "namespaced_sse": "POST /sse/{namespace} (JSON-RPC, with auth)",
         },
         "example_usage": {
             "list_tools": {
+                "method": "POST /message",
+                "body": {"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
+            },
+            "list_tools_auth": {
                 "method": "POST /sse",
+                "headers": {"X-Namespace": "dev"},
                 "body": {"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
             },
             "execute_code": {
-                "method": "POST /sse",
-                "headers": {"X-Namespace": "dev"},
+                "method": "POST /message",
                 "body": {
                     "jsonrpc": "2.0",
                     "id": 1,
@@ -104,11 +114,17 @@ async def custom_404_handler(request: Any, exc: Any) -> JSONResponse:
             "error": "Not Found",
             "hint": "MCProxy uses MCP Protocol (JSON-RPC), not REST endpoints",
             "correct_usage": {
-                "list_tools": "POST /sse with {'jsonrpc':'2.0','id':1,'method':'tools/list'}",
-                "call_tool": "POST /sse with {'jsonrpc':'2.0','id':1,'method':'tools/call','params':{...}}",
+                "list_tools": "POST /message with {'jsonrpc':'2.0','id':1,'method':'tools/list'}",
+                "call_tool": "POST /message with {'jsonrpc':'2.0','id':1,'method':'tools/call','params':{...}}",
+                "list_tools_auth": "POST /sse with X-Namespace header for auth + namespace",
+                "sse_stream": "GET /sse for SSE stream (POST /message for JSON-RPC)",
                 "health_check": "GET /health",
             },
-            "example": 'curl -X POST http://localhost:12010/sse -H \'Content-Type: application/json\' -d \'{"jsonrpc":"2.0","id":1,"method":"tools/list"}\'',
+            "example": (
+                "curl -X POST http://localhost:12010/message "
+                "-H 'Content-Type: application/json' "
+                '-d \'{"jsonrpc":"2.0","id":1,"method":"tools/list"}\''
+            ),
             "documentation": "https://github.com/bkuri/mcproxy/blob/main/README.md",
         },
     )
