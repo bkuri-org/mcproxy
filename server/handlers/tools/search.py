@@ -19,13 +19,23 @@ async def handle_search(
 ) -> Dict[str, Any]:
     """Handle search meta-tool.
 
+    Supports hierarchical depth levels for progressive detail:
+        0: Server names only
+        1: Server names + categories + tool counts
+        2: Tool names + descriptions (default for long queries)
+        3: Tool names + descriptions + inputSchema + usage examples
+
+    At depth=3 (set via max_depth=3 param), each matched tool includes
+    its full inputSchema and a generated usage example like:
+        api.server('wikipedia').search(query='<query>', limit=5)
+
     Args:
         msg_id: JSON-RPC message ID
-        params: Search parameters (query, namespace, max_depth)
+        params: Search parameters (query, namespace, max_depth, max_results)
         connection_namespace: Namespace from connection context (X-Namespace header)
         capability_registry: Capability registry instance
         min_words: Minimum words to trigger depth=2 (default: 2)
-        max_tools: Maximum tools to return at depth=2 (default: 5)
+        max_tools: Maximum tools to return per server (default: 5)
 
     Returns:
         MCP response with search results

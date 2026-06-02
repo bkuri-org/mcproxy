@@ -5,6 +5,7 @@ from typing import Any, Dict, Optional
 from utils.fuzzy_match import fuzzy_score
 
 from .registry import CapabilityRegistry
+from .example_gen import generate_tool_example
 
 
 class ManifestQuery:
@@ -28,15 +29,17 @@ class ManifestQuery:
         max_depth: int = 2,
         max_tools: int = 5,
     ) -> Dict:
-        """Search manifest with fuzzy matching (discovery only - no schemas).
+        """Search manifest with fuzzy matching.
 
         Depth levels:
             0: Server names only
             1: Server names + categories + tool counts
-            2: Server names + categories + tool names + descriptions (truncated)
-            3: Server names + categories + tool names + full descriptions
+            2: Server names + categories + tool names + descriptions
+            3: Tool names + descriptions + inputSchema + usage examples
 
-        Note: This action is for discovery only. Use inspect() to get tool schemas.
+        At depth=3, each matched tool includes its full inputSchema and a
+        generated usage example like:
+            api.server('wikipedia').search(query='<query>', limit=5)
 
         Args:
             query: Search query string
@@ -154,15 +157,21 @@ class ManifestQuery:
                                 "match_score": best_score,
                             }
 
-                            # At depth=2, include description only (no schema - use inspect for schemas)
+                            # At depth >= 2, include truncated description
                             if max_depth >= 2:
                                 tool_match["description"] = (
                                     tool_desc[:200] if tool_desc else ""
                                 )  # Truncate long descriptions
 
                             if max_depth >= 3:
-                                # At depth=3, include full description
+                                # Full description + inputSchema + usage example
                                 tool_match["description"] = tool_desc
+                                tool_match["inputSchema"] = tool.get("inputSchema", {})
+                                tool_match["example"] = generate_tool_example(
+                                    server_name,
+                                    tool_name,
+                                    tool.get("inputSchema", {}),
+                                )
 
                             matched_tools.append(tool_match)
                             results["matches"]["tools"].append(
@@ -172,10 +181,10 @@ class ManifestQuery:
                     server_entry["tools"] = len(tools)
                     server_entry["matched_tools"] = matched_tools
 
-                # Limit results at depth=2 to prevent token explosion
+                # Limit results at depth >= 2 to prevent token explosion
                 # max_tools <= 0 means unlimited (show all)
                 if (
-                    max_depth == 2
+                    max_depth >= 2
                     and max_tools_at_depth_2 > 0
                     and len(server_entry.get("matched_tools", []))
                     > max_tools_at_depth_2
@@ -200,8 +209,8 @@ class ManifestQuery:
             len(results["matches"][k]) for k in results["matches"]
         )
 
-        # Add warning if results were truncated at depth=2
-        if max_depth == 2:
+        # Add warning if results were truncated at depth >= 2
+        if max_depth >= 2:
             truncated_servers = [r for r in results["results"] if r.get("_truncated")]
             if truncated_servers:
                 results["warning"] = (
