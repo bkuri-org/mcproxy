@@ -99,6 +99,12 @@ Examples:
         help="Run as MCP server over stdio instead of HTTP (for direct MCP client integration)",
     )
 
+    parser.add_argument(
+        "--validate-connections",
+        action="store_true",
+        help="Validate all HTTP backend connections at startup and exit on failure",
+    )
+
     args = parser.parse_args()
 
     # Setup logging - use stderr in stdio mode to avoid conflicts with JSON output on stdout
@@ -120,6 +126,61 @@ Examples:
     except ConfigError as e:
         logger.error(f"Failed to load configuration: {e}")
         sys.exit(1)
+
+    # Validate backend connections if requested
+    if args.validate_connections:
+        import requests
+
+        http_servers = [
+            s
+            for s in config.get("servers", [])
+            if s.get("enabled", True) and "url" in s
+        ]
+        if http_servers:
+            logger.info(
+                f"Validating {len(http_servers)} HTTP backend connections..."
+            )
+            failures = []
+            for server in http_servers:
+                name = server["name"]
+                url = server["url"]
+                timeout = server.get("timeout", 60)
+                try:
+                    headers = {
+                        "Content-Type": "application/json",
+                        "Accept": "text/event-stream, application/json",
+                    }
+                    headers.update(server.get("headers", {}))
+                    payload = {
+                        "jsonrpc": "2.0",
+                        "id": "validate",
+                        "method": "initialize",
+                        "params": {
+                            "protocolVersion": "2024-11-05",
+                            "capabilities": {},
+                            "clientInfo": {
+                                "name": "mcproxy",
+                                "version": "5.1.0",
+                            },
+                        },
+                    }
+                    resp = requests.post(
+                        url, json=payload, headers=headers, timeout=timeout
+                    )
+                    resp.raise_for_status()
+                    logger.info(f"  ✅ {name} ({url})")
+                except Exception as e:
+                    logger.error(f"  ❌ {name} ({url}): {e}")
+                    failures.append(name)
+
+            if failures:
+                logger.error(
+                    f"Connection validation failed for {len(failures)} "
+                    f"server(s): {', '.join(failures)}"
+                )
+                sys.exit(1)
+            else:
+                logger.info("All backend connections validated ✅")
 
     # Initialize blocklist security system
     security_config = config.get("security", {})

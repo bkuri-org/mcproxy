@@ -10,6 +10,7 @@ from typing import Any, Callable, Dict, Optional
 
 from logging_config import get_logger
 from manifest import CapabilityRegistry
+from tool_aggregator import untransform_tool_name
 
 from .execute import handle_execute, handle_trace
 from .help import handle_help
@@ -117,12 +118,19 @@ async def _handle_direct_call(
         }
 
     try:
+        # Untransform the tool name to recover the original upstream name
+        upstream_tool = untransform_tool_name(server_name, tool)
+        if upstream_tool != tool:
+            logger.debug(
+                f"[DIRECT_CALL] Tool name untransformed: {tool} -> {upstream_tool}"
+            )
+
         ns_context = f" namespace={namespace}" if namespace else ""
         logger.info(
-            f"[DIRECT_CALL] {server_name}__{tool}{ns_context} args={list(arguments.keys())}"
+            f"[DIRECT_CALL] {server_name}__{upstream_tool}{ns_context} args={list(arguments.keys())}"
         )
 
-        result = await tool_executor(server_name, tool, arguments)
+        result = await tool_executor(server_name, upstream_tool, arguments)
 
         # Normalize result to MCP content format
         content = _normalize_result(result)

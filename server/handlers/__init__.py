@@ -38,6 +38,7 @@ from .tools import (
     handle_inspect,
 )
 from .parsing import parse_inspect_code
+from tool_aggregator import transform_tool_name, set_prefix_configs, get_prefix_configs
 
 logger = get_logger(__name__)
 
@@ -58,6 +59,24 @@ def set_mcproxy_config(config: dict) -> None:
     """
     global _mcproxy_config
     _mcproxy_config = config
+
+    # Extract per-server prefix configs and propagate to tool_aggregator
+    prefix_configs = {}
+    for server in config.get("servers", []):
+        name = server.get("name")
+        if name:
+            pc = {}
+            if "strip_tool_prefix" in server:
+                pc["strip_tool_prefix"] = server["strip_tool_prefix"]
+            if "tool_prefix" in server:
+                pc["tool_prefix"] = server["tool_prefix"]
+            if pc:
+                prefix_configs[name] = pc
+    if prefix_configs:
+        set_prefix_configs(prefix_configs)
+        logger.info(
+            f"Tool prefix configs loaded for {len(prefix_configs)} servers"
+        )
 
 
 def get_mcproxy_config() -> dict:
@@ -171,7 +190,9 @@ async def handle_tools_list(
                 if not isinstance(tool, dict) or "name" not in tool:
                     continue
 
-                prefixed_name = f"{server_name}__{tool['name']}"
+                # Apply per-server prefix transforms
+                transformed_name = transform_tool_name(server_name, tool["name"])
+                prefixed_name = f"{server_name}__{transformed_name}"
                 # Build a clean tool entry with the prefixed name
                 tool_entry = {
                     "name": prefixed_name,

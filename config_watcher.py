@@ -435,6 +435,27 @@ def validate_server(server: Dict[str, Any], index: int) -> None:
     if "headers" in server and not isinstance(server["headers"], dict):
         raise ConfigError(f"Server {index} 'headers' must be an object")
 
+    if "strip_tool_prefix" in server:
+        if not isinstance(server["strip_tool_prefix"], str):
+            raise ConfigError(f"Server {index} 'strip_tool_prefix' must be a string")
+        if not server["strip_tool_prefix"]:
+            raise ConfigError(
+                f"Server {index} 'strip_tool_prefix' must be a non-empty string"
+            )
+
+    if "tool_prefix" in server:
+        if not isinstance(server["tool_prefix"], str):
+            raise ConfigError(f"Server {index} 'tool_prefix' must be a string")
+
+    # Warn if env is set on an HTTP server (only affects adapter process level)
+    if server_type == "http" and "env" in server:
+        logger.warning(
+            f"Server {index} ({server['name']}): 'env' field on HTTP server has no "
+            f"effect — environment variables only propagate to stdio adapters. "
+            f"Use 'headers' for HTTP authentication or set env vars in the adapter "
+            f"systemd unit directly."
+        )
+
 
 def validate_namespace_servers(
     ns_name: str, servers: List[str], all_server_names: Set[str]
