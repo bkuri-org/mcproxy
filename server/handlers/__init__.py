@@ -217,7 +217,6 @@ async def handle_tools_list(
         force_brief = explicit_brief or (
             not explicit_full and total_tools > list_brief_threshold
         )
-        server_collapse_threshold = max(20, list_brief_threshold // 2)
 
         for server_name, server_tools in tools_by_server.items():
             if allowed_servers is not None and server_name not in allowed_servers:
@@ -225,28 +224,8 @@ async def handle_tools_list(
 
             server_count = len(server_tools)
 
-            # Check if this server should be collapsed
-            should_collapse = force_brief and server_count > server_collapse_threshold
-
-            if should_collapse:
-                # Collapse server to a single summary entry
-                first_tool = server_tools[0] if server_tools else {}
-                transformed_name = transform_tool_name(server_name, first_tool.get("name", ""))
-                # Build server prefix for summary
-                prefix = f"{server_name}__"
-                # Extract category from first tool name
-                category = first_tool.get("name", "").split("_")[0] if first_tool.get("name", "") else ""
-                tool_entry = {
-                    "name": f"{prefix}*",
-                    "description": f"{server_count} tools for {server_name} management",
-                    "inputSchema": {"type": "object"},
-                    "_collapsed": True,
-                    "_tool_count": server_count,
-                }
-                tools.append(tool_entry)
-                returned_tools += 1
-                skipped_by_server[server_name] = server_count - 1
-                continue
+            # Collapse is disabled — agents need to see all tools for discoverability.
+            # Brief mode truncates descriptions instead of hiding tools behind wildcards.
 
             for i, tool in enumerate(server_tools):
                 if not isinstance(tool, dict) or "name" not in tool:
