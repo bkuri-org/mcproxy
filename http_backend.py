@@ -125,6 +125,72 @@ def _format_pydantic_error(err: dict) -> str:
     return msg if isinstance(msg, str) else str(msg)
 
 
+def _detect_result_error(result: Dict[str, Any]) -> Optional[str]:
+    """Detect validation errors hidden inside a successful result.
+
+    Some upstream MCP servers (e.g., Home Assistant) return parameter
+    validation errors as successful JSON-RPC results with error text
+    in the content field instead of using the proper JSON-RPC error field.
+
+    Detects:
+    - Content text starting with "Error:" followed by JSON validation data
+    - Content text that parses as a JSON array of Pydantic validation errors
+
+    Args:
+        result: The 'result' dict from a JSON-RPC tools/call response
+
+    Returns:
+        Human-readable error string, or None if the result is a genuine success
+    """
+    content = result.get("content", [])
+    if not isinstance(content, list) or not content:
+        return None
+
+    # Check the first text content item for error patterns
+    text = ""
+    for item in content:
+        if isinstance(item, dict) and item.get("type") == "text":
+            text = item.get("text", "")
+            break
+
+    if not text:
+        return None
+
+    # Pattern 1: "Error:" prefix followed by JSON (Pydantic validation list)
+    if text.startswith("Error:"):
+        error_body = text[len("Error:"):].strip()
+        # Try to parse as JSON — could be a Pydantic error list
+        if error_body.startswith("["):
+            try:
+                parsed = json.loads(error_body)
+                if isinstance(parsed, list):
+                    parts = []
+                    for err in parsed:
+                        if isinstance(err, dict):
+                            parts.append(_format_pydantic_error(err))
+                    if parts:
+                        return "; ".join(parts)
+            except (json.JSONDecodeError, TypeError):
+                pass
+        # Non-JSON error body — return as-is with "Error:" stripped
+        if error_body:
+            return error_body
+        return text
+
+    # Pattern 2: Content that IS a JSON array of Pydantic errors (no prefix)
+    if text.startswith("["):
+        try:
+            parsed = json.loads(text)
+            if isinstance(parsed, list) and all(isinstance(e, dict) for e in parsed):
+                parts = [_format_pydantic_error(e) for e in parsed]
+                if parts:
+                    return "; ".join(parts)
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+    return None
+
+
 def _try_parse_dict_error(data: dict) -> Optional[str]:
     """Try to extract validation errors from a dict-format data field.
 
@@ -398,9 +464,21 @@ class HTTPServerConnector:
             )
             raise RuntimeError(f"Tool call failed: {error_msg}")
 
+        # Some upstream servers (e.g., Home Assistant MCP) return validation errors
+        # as successful results with error content instead of JSON-RPC errors.
+        # Detect these and convert to RuntimeErrors so downstream enrichment kicks in.
+        result = response.get("result", {})
+        result_error = _detect_result_error(result)
+        if result_error:
+            self._last_error = result_error
+            logger.error(
+                f"[CALL_TOOL_RESULT_ERROR] tool={tool_name} error={result_error[:200]}"
+            )
+            raise RuntimeError(f"Tool call failed: {result_error}")
+
         self._last_error = None
         logger.info(f"[CALL_TOOL_SUCCESS] tool={tool_name}")
-        return response.get("result", {})
+        return result
 
     async def _discover_tools(self) -> None:
         response = self._send_request(method="tools/list", id="list_tools")
