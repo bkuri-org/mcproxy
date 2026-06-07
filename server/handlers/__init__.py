@@ -239,7 +239,7 @@ async def handle_tools_list(
                 tool_entry = {
                     "name": f"{prefix}*",
                     "description": f"{server_count} tools for {server_name} management",
-                    "inputSchema": {},
+                    "inputSchema": {"type": "object"},
                     "_collapsed": True,
                     "_tool_count": server_count,
                 }
