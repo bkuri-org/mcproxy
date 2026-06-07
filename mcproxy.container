@@ -24,7 +24,7 @@ Environment=PYTHONUNBUFFERED=1
 # Security hardening (Container-level)
 NoNewPrivileges=true
 SecurityLabelDisable=false
-ReadOnlyRootfs=true
+ReadOnly=true
 CapDrop=ALL
 
 # Resource limits
