@@ -2,11 +2,6 @@
   "servers": [
     {
       "name": "fear_greed_index",
-      "command": "/usr/bin/npx",
-      "args": [
-        "-y",
-        "mcp-server-fear-greed"
-      ],
       "env": {
         "PATH": "/usr/bin:/usr/local/bin:/bin"
       },
@@ -17,11 +12,6 @@
     },
     {
       "name": "sequential_thinking",
-      "command": "/usr/bin/npx",
-      "args": [
-        "-y",
-        "@modelcontextprotocol/server-sequential-thinking"
-      ],
       "env": {
         "PATH": "/usr/bin:/usr/local/bin:/bin"
       },
@@ -44,11 +34,6 @@
     },
     {
       "name": "think_tool",
-      "command": "/usr/bin/npx",
-      "args": [
-        "-y",
-        "think-tool-mcp"
-      ],
       "env": {
         "PATH": "/usr/bin:/usr/local/bin:/bin"
       },
@@ -59,11 +44,6 @@
     },
     {
       "name": "coinstats",
-      "command": "/usr/bin/npx",
-      "args": [
-        "-y",
-        "@coinstats/coinstats-mcp"
-      ],
       "env": {
         "PATH": "/usr/bin:/usr/local/bin:/bin",
         "COINSTATS_API_KEY": "${COINSTATS_API_KEY}"
@@ -75,14 +55,6 @@
     },
     {
       "name": "llms_txt",
-      "command": "/usr/bin/uvx",
-      "args": [
-        "mcpdoc",
-        "--urls",
-        "LangGraph:https://langchain-ai.github.io/langgraph/llms.txt",
-        "--transport",
-        "stdio"
-      ],
       "env": {
         "PATH": "/usr/bin:/usr/local/bin:/bin"
       },
@@ -93,11 +65,6 @@
     },
     {
       "name": "youtube",
-      "command": "/usr/bin/npx",
-      "args": [
-        "-y",
-        "@anaisbetts/mcp-youtube"
-      ],
       "env": {
         "PATH": "/usr/bin:/usr/local/bin:/bin"
       },
@@ -108,11 +75,6 @@
     },
     {
       "name": "wikipedia",
-      "command": "/usr/bin/npx",
-      "args": [
-        "-y",
-        "wikipedia-mcp"
-      ],
       "env": {
         "PATH": "/usr/bin:/usr/local/bin:/bin"
       },
@@ -136,11 +98,6 @@
     },
     {
       "name": "asset_price",
-      "command": "/usr/bin/npx",
-      "args": [
-        "-y",
-        "asset-price-mcp"
-      ],
       "env": {
         "PATH": "/usr/bin:/usr/local/bin:/bin"
       },
@@ -151,11 +108,6 @@
     },
     {
       "name": "pure_md",
-      "command": "/usr/bin/npx",
-      "args": [
-        "-y",
-        "puremd-mcp"
-      ],
       "env": {
         "PATH": "/usr/bin:/usr/local/bin:/bin",
         "PUREMD_API_KEY": "${PUREMD_API_KEY}"
@@ -180,10 +132,6 @@
     },
     {
       "name": "perplexity_sonar",
-      "command": "/usr/bin/uvx",
-      "args": [
-        "perplexity-mcp"
-      ],
       "env": {
         "PATH": "/usr/bin:/usr/local/bin:/bin",
         "PERPLEXITY_MODEL": "sonar",
@@ -231,11 +179,6 @@
     },
     {
       "name": "home_assistant",
-      "command": "/usr/bin/npx",
-      "args": [
-        "-y",
-        "@coolver/home-assistant-mcp@latest"
-      ],
       "env": {
         "PATH": "/usr/bin:/usr/local/bin:/bin",
         "HA_AGENT_URL": "http://192.168.50.99:8099",
