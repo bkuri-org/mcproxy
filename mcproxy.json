@@ -11,7 +11,9 @@
         "PATH": "/usr/bin:/usr/local/bin:/bin"
       },
       "timeout": 120,
-      "enabled": true
+      "enabled": true,
+      "type": "http",
+      "url": "http://localhost:12020/mcp"
     },
     {
       "name": "sequential_thinking",
@@ -24,7 +26,9 @@
         "PATH": "/usr/bin:/usr/local/bin:/bin"
       },
       "timeout": 120,
-      "enabled": true
+      "enabled": true,
+      "type": "http",
+      "url": "http://localhost:12021/mcp"
     },
     {
       "name": "atom_of_thoughts",
@@ -49,7 +53,9 @@
         "PATH": "/usr/bin:/usr/local/bin:/bin"
       },
       "timeout": 120,
-      "enabled": true
+      "enabled": true,
+      "type": "http",
+      "url": "http://localhost:12023/mcp"
     },
     {
       "name": "coinstats",
@@ -63,7 +69,9 @@
         "COINSTATS_API_KEY": "${COINSTATS_API_KEY}"
       },
       "timeout": 120,
-      "enabled": true
+      "enabled": true,
+      "type": "http",
+      "url": "http://localhost:12024/mcp"
     },
     {
       "name": "llms_txt",
@@ -79,7 +87,9 @@
         "PATH": "/usr/bin:/usr/local/bin:/bin"
       },
       "timeout": 120,
-      "enabled": true
+      "enabled": true,
+      "type": "http",
+      "url": "http://localhost:12025/mcp"
     },
     {
       "name": "youtube",
@@ -92,7 +102,9 @@
         "PATH": "/usr/bin:/usr/local/bin:/bin"
       },
       "timeout": 120,
-      "enabled": true
+      "enabled": true,
+      "type": "http",
+      "url": "http://localhost:12026/mcp"
     },
     {
       "name": "wikipedia",
@@ -105,7 +117,9 @@
         "PATH": "/usr/bin:/usr/local/bin:/bin"
       },
       "timeout": 120,
-      "enabled": true
+      "enabled": true,
+      "type": "http",
+      "url": "http://localhost:12027/mcp"
     },
     {
       "name": "tmux",
@@ -131,7 +145,9 @@
         "PATH": "/usr/bin:/usr/local/bin:/bin"
       },
       "timeout": 120,
-      "enabled": true
+      "enabled": true,
+      "type": "http",
+      "url": "http://localhost:12028/mcp"
     },
     {
       "name": "pure_md",
@@ -145,7 +161,9 @@
         "PUREMD_API_KEY": "${PUREMD_API_KEY}"
       },
       "timeout": 120,
-      "enabled": true
+      "enabled": true,
+      "type": "http",
+      "url": "http://localhost:12029/mcp"
     },
     {
       "name": "playwright",
@@ -172,7 +190,9 @@
         "PERPLEXITY_API_KEY": "${PERPLEXITY_API_KEY}"
       },
       "timeout": 120,
-      "enabled": true
+      "enabled": true,
+      "type": "http",
+      "url": "http://localhost:12030/mcp"
     },
     {
       "name": "jesse",
@@ -222,7 +242,9 @@
         "HA_AGENT_KEY": "ZUAUTBnvtXROPLmCVU0WZPKGN50oBA6AXbneKUfyZvo"
       },
       "timeout": 120,
-      "enabled": true
+      "enabled": true,
+      "type": "http",
+      "url": "http://localhost:12032/mcp"
     },
     {
       "name": "zilliqa_insights",
