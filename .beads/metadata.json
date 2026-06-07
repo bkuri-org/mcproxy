@@ -1,7 +1,5 @@
 {
-  "database": "dolt",
-  "backend": "dolt",
-  "dolt_mode": "embedded",
-  "dolt_database": "beads_MCPROXY",
+    "database": "jsonl",
+    "backend": "jsonl",
   "project_id": "77713c5e-4ee9-47ee-9b05-5b24709ded9d"
 }

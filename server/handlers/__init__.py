@@ -261,9 +261,8 @@ async def handle_tools_list(
                     "description": tool.get("description", ""),
                 }
 
-                # Only include inputSchema in non-brief mode
-                if not force_brief:
-                    tool_entry["inputSchema"] = tool.get("inputSchema", {})
+                # Always include inputSchema (MCP protocol requires it)
+                tool_entry["inputSchema"] = tool.get("inputSchema", {})
 
                 tools.append(tool_entry)
                 returned_tools += 1
