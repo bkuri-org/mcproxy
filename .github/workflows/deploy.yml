@@ -1,0 +1,89 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  bump-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check for bump label
+        id: bump
+        run: |
+          # Check last commit message for bump label
+          MSG="${{ github.event.head_commit.message }}"
+          if echo "$MSG" | grep -qE "bump:major"; then
+            echo "level=major" >> "$GITHUB_OUTPUT"
+          elif echo "$MSG" | grep -qE "bump:minor"; then
+            echo "level=minor" >> "$GITHUB_OUTPUT"
+          elif echo "$MSG" | grep -qE "bump:patch"; then
+            echo "level=patch" >> "$GITHUB_OUTPUT"
+          else
+            echo "level=none" >> "$GITHUB_OUTPUT"
+          fi
+          echo "message=$MSG" >> "$GITHUB_OUTPUT"
+
+      - name: Bump version
+        if: steps.bump.outputs.level != 'none'
+        run: |
+          LEVEL="${{ steps.bump.outputs.level }}"
+          CURRENT=$(grep '^version = ' pyproject.toml | sed 's/.*"\(.*\)".*/\1/')
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
+
+          case "$LEVEL" in
+            major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
+            minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
+            patch) PATCH=$((PATCH + 1)) ;;
+          esac
+
+          NEW="${MAJOR}.${MINOR}.${PATCH}"
+          echo "Bumping ${CURRENT} → ${NEW} (${LEVEL})"
+
+          sed -i "s/^version = \"${CURRENT}\"/version = \"${NEW}\"/" pyproject.toml
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add pyproject.toml
+          git commit -m "Bump version to ${NEW} [skip ci]"
+          git tag "v${NEW}"
+          git push origin main --tags
+
+          echo "version=${NEW}" >> "$GITHUB_ENV"
+
+      - name: Deploy to server2
+        if: steps.bump.outputs.level != 'none'
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: bash /srv/containers/mcproxy/deploy.sh
+
+      - name: Notify
+        if: steps.bump.outputs.level != 'none'
+        run: |
+          VERSION="${VERSION:-$(grep '^version = ' pyproject.toml | sed 's/.*"\(.*\)".*/\1/')}"
+          LEVEL="${{ steps.bump.outputs.level }}"
+          SHORT_SHA="${GITHUB_SHA:0:7}"
+
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+            -X POST "https://ntfy.kuri.casa/org" \
+            -H "Authorization: Bearer ${{ secrets.NTFY_TOKEN }}" \
+            -H "Title: [mcproxy] v${VERSION} deployed (${LEVEL})" \
+            -H "Tags: rocket,mcproxy" \
+            -H "Click: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}" \
+            -d "Deployed v${VERSION} to server2 (${SHORT_SHA})")
+
+          if [ "$HTTP_CODE" -ne 200 ]; then
+            echo "::warning::ntfy notification failed (HTTP $HTTP_CODE)"
+          fi
