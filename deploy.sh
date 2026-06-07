@@ -61,7 +61,7 @@ for i in $(seq 1 $MAX_RETRIES); do
     if timeout 2 bash -c "echo > /dev/tcp/localhost/12010" 2>/dev/null; then
         TOOL_COUNT=$(curl -sf -X POST http://localhost:12010/message \
           -H "Content-Type: application/json" \
-          -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' 2>/dev/null \
+          -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{"full":true}}' 2>/dev/null \
           | python3 -c "import sys,json; print(len(json.load(sys.stdin).get('result',{}).get('tools',[])))" 2>/dev/null || echo "?")
         echo "  ✓ Port 12010 open, $TOOL_COUNT tools ready (attempt $i)"
         echo ""
