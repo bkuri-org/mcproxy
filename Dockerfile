@@ -10,8 +10,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends gcc \
 # Install uv
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
-# Copy project files and install dependencies
-COPY pyproject.toml .
+# Copy project files for build
+COPY pyproject.toml README.md .
+# Copy requirements.txt if it exists (some deps are listed here too)
+COPY requirements.txt ./
+# Install into system site-packages
 RUN uv pip install --system --no-cache .
 
 # Production stage
