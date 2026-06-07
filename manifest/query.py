@@ -216,7 +216,7 @@ class ManifestQuery:
                 results["warning"] = (
                     f"Results limited to {max_tools_at_depth_2} tools per server. "
                     f"Use a more specific query to narrow results, or use max_depth=1 for overview. "
-                    f"Truncated: {', '.join(f'{r["server"]} ({r["_total_matched"]} tools)' for r in truncated_servers)}"
+f"Truncated: {', '.join(r['server'] + ' (' + str(r['_total_matched']) + ' tools)' for r in truncated_servers)}"
                 )
 
         # Cache the result

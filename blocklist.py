@@ -85,7 +85,7 @@ class Blocklist:
     def __init__(
         self,
         config: Dict[str, Any],
-        cache_dir: str = "/srv/containers/mcproxy/cache",
+        cache_dir: str = "cache",
     ):
         self._config = config
         self._cache_dir = Path(cache_dir)

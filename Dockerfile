@@ -1,69 +1,69 @@
-# Multi-stage build for MCProxy
-# Stage 1: Build dependencies
-FROM python:3.11-slim as builder
+# Build stage: install dependencies via uv
+FROM python:3.11-slim AS builder
 
 WORKDIR /build
 
-# Install build dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc \
+# Install build tools
+RUN apt-get update && apt-get install -y --no-install-recommends gcc \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements and install dependencies
-COPY requirements.txt .
-RUN pip install --user --no-cache-dir -r requirements.txt
+# Install uv
+COPY --from=ghcr.io/astral-sh/uv:0.11.16 /uv /usr/local/bin/uv
 
-# Stage 2: Production image
+# Copy project files for build
+COPY pyproject.toml README.md .
+# Copy requirements.txt if it exists (some deps are listed here too)
+COPY requirements.txt ./
+# Install into system site-packages
+RUN uv pip install --system --no-cache .
+
+# Production stage
 FROM python:3.11-slim
 
-# Create non-root user for security
-RUN groupadd -r mcproxy && useradd -r -g mcproxy mcproxy
-
-# Set working directory
 WORKDIR /app
 
-# Copy installed packages from builder stage
-COPY --from=builder /root/.local /home/mcproxy/.local
-ENV PATH=/home/mcproxy/.local/bin:$PATH
+# Copy installed packages from builder
+COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 
-# Install curl for healthcheck (only tool available after shell/python removal)
+# Create non-root user and directory structure
+RUN groupadd -r mcproxy && useradd -r -g mcproxy mcproxy && \
+    mkdir -p /app/config /app/data /app/cache && \
+    chown -R mcproxy:mcproxy /app
+
+# Install curl for healthcheck
 RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
-
-# SHELL REMOVAL - Security hardening for v4.2
-# Disable shell access to prevent arbitrary code execution
-# Only uv and node remain available for MCP servers
-RUN if [ -f /bin/sh ]; then \
-    echo '#!/bin/sh\necho "Shell disabled for security"\nexit 1' > /bin/sh.disabled && \
-    chmod +x /bin/sh.disabled && \
-    (mv /bin/sh /bin/sh.real 2>/dev/null || true) && \
-    ln -sf /bin/sh.disabled /bin/sh; fi && \
-    if [ -f /bin/bash ]; then \
-    echo '#!/bin/bash\necho "Shell disabled for security"\nexit 1' > /bin/bash.disabled && \
-    chmod +x /bin/bash.disabled && \
-    (mv /bin/bash /bin/bash.real 2>/dev/null || true) && \
-    ln -sf /bin/bash.disabled /bin/bash; fi && \
-    if [ -f /usr/bin/python3 ]; then \
-    echo '#!/usr/bin/python3\nprint("Python disabled for security")\nexit 1' > /usr/bin/python.disabled && \
-    chmod +x /usr/bin/python.disabled && \
-    (mv /usr/bin/python3 /usr/bin/python3.real 2>/dev/null || true) && \
-    ln -sf /usr/bin/python.disabled /usr/bin/python3; fi
-
-# Create directory structure
-RUN mkdir -p /app/config /app/data /app/cache && chown -R mcproxy:mcproxy /app
 
 # Copy application code
 COPY --chown=mcproxy:mcproxy *.py .
+COPY --chown=mcproxy:mcproxy auth/ auth/
+COPY --chown=mcproxy:mcproxy manifest/ manifest/
+COPY --chown=mcproxy:mcproxy sandbox/ sandbox/
+COPY --chown=mcproxy:mcproxy server/ server/
+COPY --chown=mcproxy:mcproxy server/handlers/ server/handlers/
+COPY --chown=mcproxy:mcproxy server/handlers/tools/ server/handlers/tools/
+COPY --chown=mcproxy:mcproxy utils/ utils/
 
-# Switch to non-root user
+# SHELL REMOVAL - Security hardening (v4.2)
+# Last RUN step — stubs shells so container has no interactive shell access
+# python3 remains available (it's /usr/local/bin/python3, not a shell)
+RUN for shell in sh bash; do \
+        if [ -f "/bin/$shell" ]; then \
+            mv "/bin/$shell" "/bin/${shell}.real" && \
+            echo "#!/bin/${shell}.real" > "/bin/${shell}.disabled" && \
+            echo 'echo "Shell disabled for security"' >> "/bin/${shell}.disabled" && \
+            echo 'exit 1' >> "/bin/${shell}.disabled" && \
+            chmod +x "/bin/${shell}.disabled" && \
+            ln -sf "/bin/${shell}.disabled" "/bin/$shell"; \
+        fi; \
+    done
+
 USER mcproxy
 
-# Expose the SSE endpoint port
 EXPOSE 12010
 
-# Health check (uses curl since python/shell are disabled for security)
+# Health check (uses curl since shell is disabled for security)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
     CMD curl -sf http://localhost:12010/health || exit 1
 
-# Run MCProxy
-ENTRYPOINT ["python", "main.py"]
-CMD ["--log", "--config", "/app/config/mcproxy.json"]
+ENTRYPOINT ["python3", "main.py"]
+CMD ["--log", "--port", "12010", "--config", "/app/config/mcproxy.json"]
