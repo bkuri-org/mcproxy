@@ -9,6 +9,8 @@ cd /srv/containers/mcproxy
 
 # 1. Sync code from main branch
 echo "  → Pulling latest from origin/main..."
+# Ensure git objects dir is writable (fixes permission errors after fresh clone)
+sudo find .git/objects -type d -exec chmod g+w {} \; 2>/dev/null || true
 git fetch origin
 git reset --hard origin/main
 
