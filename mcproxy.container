@@ -1,53 +1,23 @@
 [Unit]
-Description=MCProxy - MCP Gateway Aggregator
-Documentation=https://github.com/mcproxy/mcproxy
+Description=MCProxy - MCP Gateway Aggregator (containerized)
+Documentation=https://github.com/bkuri-org/mcproxy
 After=network-online.target
 Wants=network-online.target
 
 [Container]
 Image=localhost/mcproxy:latest
 ContainerName=mcproxy
-
-# Network: Use bridge instead of host for isolation
-Network=bridge
-
-# Mount configuration directory (read-only)
-Volume=/srv/containers/mcproxy/config:/app/config:ro
-
-# Mount data directory for credentials DB and blocklist cache
-Volume=/srv/containers/mcproxy/data:/app/data:rw
-Volume=/srv/containers/mcproxy/cache:/app/cache:rw
-
-# Environment variables - pass directly instead of .env file
-# This prevents .env from being readable by container
+# Phase 1: host networking so container can reach bare-metal MCP servers on localhost
+# Phase 3 (mcproxy-io1.3): switch to bridge + shared Podman network
+Network=host
 Environment=PYTHONUNBUFFERED=1
-
-# Working directory
-WorkingDirectory=/app
-
-# Run with logging to stdout
-Exec=python main.py --log --config /app/config/mcp-servers.json
-
-# Container labels
+Volume=/srv/containers/mcproxy/config:/app/config:ro,Z
+Volume=/srv/containers/mcproxy/.env:/app/.env:ro,Z
+Volume=mcproxy-data:/app/data:Z
+Volume=mcproxy-cache:/app/cache:Z
 Label=app=mcproxy
-Label=service=gateway
-
-# Security settings - HARDENED v4.2
-NoNewPrivileges=true
-SecurityLabelDisable=false
-
-# Filesystem isolation
-ProtectHome=true
-ProtectSystem=strict
-PrivateTmp=true
-ReadOnlyRootfs=true
-
-# Drop all capabilities
-CapDrop=ALL
-
-# Resource limits
-Memory=512M
-MemorySwap=512M
+Label=service=mcp
+Label=phase=1-host-network
 
 [Service]
 Restart=always
