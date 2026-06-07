@@ -24,7 +24,6 @@ Environment=PYTHONUNBUFFERED=1
 # Security hardening (Container-level)
 NoNewPrivileges=true
 SecurityLabelDisable=false
-PrivateTmp=true
 ReadOnlyRootfs=true
 CapDrop=ALL
 
@@ -44,6 +43,7 @@ TimeoutStartSec=120
 TimeoutStopSec=60
 ProtectHome=true
 ProtectSystem=strict
+PrivateTmp=true
 
 [Install]
 WantedBy=multi-user.target
