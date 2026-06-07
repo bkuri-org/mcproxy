@@ -1,5 +1,7 @@
 {
-    "database": "jsonl",
-    "backend": "jsonl",
+  "database": "jsonl",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "MCPROXY",
   "project_id": "77713c5e-4ee9-47ee-9b05-5b24709ded9d"
 }
