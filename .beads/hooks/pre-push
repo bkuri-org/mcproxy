@@ -65,25 +65,23 @@ echo "  → Reloading systemd..."
 sudo systemctl daemon-reload
 echo "  → Restarting mcproxy service (container)..."
 sudo systemctl restart mcproxy.service
-sleep 5
-echo "  → Checking service status..."
-if sudo systemctl is-active --quiet mcproxy.service; then
-    echo "  ✓ mcproxy container is running"
-    echo "  → Verifying health..."
+echo "  → Verifying health..."
+MAX_RETRIES=12
+for i in $(seq 1 $MAX_RETRIES); do
     if curl -sf http://localhost:12010/health > /dev/null 2>&1; then
-        echo "  ✓ Health check passed"
+        echo "  ✓ Health check passed (attempt $i)"
         echo ""
         echo "✅ Deployment complete!"
-    else
-        echo "  ✗ Container running but health check failed"
-        sudo podman logs mcproxy 2>&1 | tail -10
-        exit 1
+        exit 0
     fi
-else
-    echo "  ✗ Container failed to start"
-    sudo podman logs mcproxy 2>&1 | tail -20
-    exit 1
-fi
+    if [ $i -lt $MAX_RETRIES ]; then
+        echo "  ⏳ Waiting for mcproxy (attempt $i/$MAX_RETRIES)..."
+        sleep 5
+    fi
+done
+echo "  ✗ Health check FAILED after $MAX_RETRIES attempts"
+sudo podman logs mcproxy 2>&1 | tail -20
+exit 1
 DEPLOY_SCRIPT
     ) &
     
