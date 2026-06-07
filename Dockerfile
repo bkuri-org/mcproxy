@@ -1,66 +1,61 @@
-# Multi-stage build for MCProxy
-# Stage 1: Build dependencies
-FROM python:3.11-slim as builder
+# Build stage: install dependencies via uv
+FROM python:3.11-slim AS builder
 
 WORKDIR /build
 
-# Install build dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc \
+# Install build tools
+RUN apt-get update && apt-get install -y --no-install-recommends gcc \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements and install dependencies
-COPY requirements.txt .
-RUN pip install --user --no-cache-dir -r requirements.txt
+# Install uv
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
-# Stage 2: Production image
+# Copy project files and install dependencies
+COPY pyproject.toml .
+RUN uv pip install --system --no-cache .
+
+# Production stage
 FROM python:3.11-slim
 
-# Create non-root user for security
-RUN groupadd -r mcproxy && useradd -r -g mcproxy mcproxy
-
-# Set working directory
 WORKDIR /app
 
-# Copy installed packages from builder stage
-COPY --from=builder /root/.local /home/mcproxy/.local
-ENV PATH=/home/mcproxy/.local/bin:$PATH
+# Copy installed packages from builder
+COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 
-# SHELL REMOVAL - Security hardening for v4.2
-# Disable shell access to prevent arbitrary code execution
-# Only uv and node remain available for MCP servers
-RUN if [ -f /bin/sh ]; then \
-    echo '#!/bin/sh\necho "Shell disabled for security"\nexit 1' > /bin/sh.disabled && \
-    chmod +x /bin/sh.disabled && \
-    (mv /bin/sh /bin/sh.real 2>/dev/null || true) && \
-    ln -sf /bin/sh.disabled /bin/sh; fi && \
-    if [ -f /bin/bash ]; then \
-    echo '#!/bin/bash\necho "Shell disabled for security"\nexit 1' > /bin/bash.disabled && \
-    chmod +x /bin/bash.disabled && \
-    (mv /bin/bash /bin/bash.real 2>/dev/null || true) && \
-    ln -sf /bin/bash.disabled /bin/bash; fi && \
-    if [ -f /usr/bin/python3 ]; then \
-    echo '#!/usr/bin/python3\nprint("Python disabled for security")\nexit 1' > /usr/bin/python.disabled && \
-    chmod +x /usr/bin/python.disabled && \
-    (mv /usr/bin/python3 /usr/bin/python3.real 2>/dev/null || true) && \
-    ln -sf /usr/bin/python.disabled /usr/bin/python3; fi
+# SHELL REMOVAL - Security hardening (v4.2)
+# Replace shells with stubs; keep python3.real for entrypoint/healthcheck
+RUN for shell in sh bash; do \
+        if [ -f "/bin/$shell" ]; then \
+            cp "/bin/$shell" "/bin/${shell}.real" && \
+            echo '#!/bin/sh' > "/bin/$shell" && \
+            echo 'echo "Shell disabled for security"' >> "/bin/$shell" && \
+            echo 'exit 1' >> "/bin/$shell" && \
+            chmod +x "/bin/$shell"; \
+        fi; \
+    done
+
+# Create non-root user
+RUN groupadd -r mcproxy && useradd -r -g mcproxy mcproxy
 
 # Create directory structure
 RUN mkdir -p /app/config /app/data /app/cache && chown -R mcproxy:mcproxy /app
 
-# Copy application code
+# Copy application code (packages + root modules)
 COPY --chown=mcproxy:mcproxy *.py .
+COPY --chown=mcproxy:mcproxy auth/ auth/
+COPY --chown=mcproxy:mcproxy manifest/ manifest/
+COPY --chown=mcproxy:mcproxy sandbox/ sandbox/
+COPY --chown=mcproxy:mcproxy server/ server/
+COPY --chown=mcproxy:mcproxy server/handlers/ server/handlers/
+COPY --chown=mcproxy:mcproxy server/handlers/tools/ server/handlers/tools/
+COPY --chown=mcproxy:mcproxy utils/ utils/
 
-# Switch to non-root user
 USER mcproxy
 
-# Expose the SSE endpoint port
-EXPOSE 12009
+EXPOSE 12010
 
-# Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:12009/sse', timeout=5)" || exit 1
+    CMD /usr/bin/python3.real -c "import urllib.request; urllib.request.urlopen('http://localhost:12010/health', timeout=5)" || exit 1
 
-# Run MCProxy
-ENTRYPOINT ["python", "main.py"]
-CMD ["--log", "--config", "/app/config/mcp-servers.json"]
+ENTRYPOINT ["/usr/bin/python3.real", "main.py"]
+CMD ["--log", "--port", "12010", "--config", "/app/config/mcproxy.json"]
