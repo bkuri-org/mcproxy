@@ -29,7 +29,6 @@ DropCapability=ALL
 
 # Resource limits
 Memory=512M
-MemorySwap=512M
 
 # Labels
 Label=app=mcproxy
