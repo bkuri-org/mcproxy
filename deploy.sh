@@ -16,11 +16,14 @@ sudo podman build -t localhost/mcproxy:latest . 2>&1 | tail -2
 # 3. Copy Quadlet
 sudo cp mcproxy.container /etc/containers/systemd/mcproxy.container
 
-# 4. Reload systemd and restart
+# 4. Sync config to bind-mounted config directory
+sudo cp mcproxy.json config/mcproxy.json
+
+# 5. Reload systemd and restart
 sudo systemctl daemon-reload
 sudo systemctl restart mcproxy.service
 
-# 5. Wait for startup with bounded retry loop
+# 6. Wait for startup with bounded retry loop
 MAX_RETRIES=12
 SLEEP_SEC=5
 echo "  → Verifying health..."
