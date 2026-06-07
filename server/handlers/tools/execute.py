@@ -16,6 +16,7 @@ async def handle_execute(
     sandbox_executor: Optional[Any] = None,
     session_manager: Optional[Any] = None,
     tool_executor: Optional[Callable] = None,
+    mcproxy_config: Optional[Dict] = None,
 ) -> Dict[str, Any]:
     """Handle execute meta-tool.
 
@@ -27,6 +28,7 @@ async def handle_execute(
         sandbox_executor: Sandbox executor instance
         session_manager: Session manager instance
         tool_executor: Callable to execute tools
+        mcproxy_config: MCProxy configuration dict
 
     Returns:
         MCP response with execution result

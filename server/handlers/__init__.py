@@ -183,7 +183,7 @@ async def handle_tools_list(
     params = params or {}
     config = config or {}
     search_config = config.get("search", {})
-    list_brief_threshold = search_config.get("list_brief_threshold", 30)
+    list_brief_threshold = search_config.get("list_brief_threshold", 100)
 
     # Allow client override: brief=true forces brief, full=true forces full schemas
     explicit_brief = params.get("brief", False)
