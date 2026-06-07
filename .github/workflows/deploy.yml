@@ -20,7 +20,6 @@ jobs:
       - name: Check for bump label
         id: bump
         run: |
-          # Check last commit message for bump label
           MSG="${{ github.event.head_commit.message }}"
           if echo "$MSG" | grep -qE "bump:major"; then
             echo "level=major" >> "$GITHUB_OUTPUT"
@@ -60,19 +59,32 @@ jobs:
 
           echo "version=${NEW}" >> "$GITHUB_ENV"
 
-      - name: Deploy to server2
+      - name: Trigger deploy via ntfy
         if: steps.bump.outputs.level != 'none'
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
-          script: bash /srv/containers/mcproxy/deploy.sh
+        run: |
+          VERSION="${VERSION:-unknown}"
+          SHORT_SHA="${GITHUB_SHA:0:7}"
+          LEVEL="${{ steps.bump.outputs.level }}"
+
+          HTTP_CODE=$(curl -s -o /tmp/ntfy-response -w "%{http_code}" \
+            -X POST "https://ntfy.kuri.casa/${{ secrets.NTFY_DEPLOY_TOPIC }}" \
+            -u "${{ secrets.NTFY_DEPLOY_USER }}:${{ secrets.NTFY_DEPLOY_PASS }}" \
+            -H "Title: [mcproxy] v${VERSION} — deploy" \
+            -H "Tags: rocket,mcproxy" \
+            -H "Priority: high" \
+            -d "deploy v${VERSION} ${SHORT_SHA} ${LEVEL}")
+
+          if [ "$HTTP_CODE" -ne 200 ]; then
+            echo "::error::ntfy deploy trigger failed (HTTP $HTTP_CODE)"
+            cat /tmp/ntfy-response
+            exit 1
+          fi
+          echo "Deploy triggered successfully"
 
       - name: Notify
         if: steps.bump.outputs.level != 'none'
         run: |
-          VERSION="${VERSION:-$(grep '^version = ' pyproject.toml | sed 's/.*"\(.*\)".*/\1/')}"
+          VERSION="${VERSION:-unknown}"
           LEVEL="${{ steps.bump.outputs.level }}"
           SHORT_SHA="${GITHUB_SHA:0:7}"
 
@@ -82,7 +94,7 @@ jobs:
             -H "Title: [mcproxy] v${VERSION} deployed (${LEVEL})" \
             -H "Tags: rocket,mcproxy" \
             -H "Click: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}" \
-            -d "Deployed v${VERSION} to server2 (${SHORT_SHA})")
+            -d "Triggered deploy v${VERSION} to server2 (${SHORT_SHA})")
 
           if [ "$HTTP_CODE" -ne 200 ]; then
             echo "::warning::ntfy notification failed (HTTP $HTTP_CODE)"
