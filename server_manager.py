@@ -6,6 +6,7 @@ Handles connection lifecycle, tool discovery, and routing tool calls.
 import asyncio
 from typing import Any, Callable, Dict, List, Optional
 
+from manifest.example_gen import generate_tool_example
 from sandbox import suggest_tool_fix
 from utils.fuzzy_match import suggest_best_match
 from logging_config import get_logger
@@ -110,6 +111,10 @@ def _enrich_param_error(
         avail_display = ", ".join(repr(p) for p in sorted(available_params)[:5])
         suffix = f" ({len(available_params) - 5} more)" if len(available_params) > 5 else ""
         parts.append(f"Available parameters: {avail_display}{suffix}")
+
+    # Append usage example for self-correction
+    usage_example = generate_tool_example(server_name, tool_name, schema)
+    parts.append(f"Usage: {usage_example}")
 
     return ". ".join(parts)
 
