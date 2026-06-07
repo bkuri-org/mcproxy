@@ -43,19 +43,7 @@ COPY --chown=mcproxy:mcproxy server/handlers/ server/handlers/
 COPY --chown=mcproxy:mcproxy server/handlers/tools/ server/handlers/tools/
 COPY --chown=mcproxy:mcproxy utils/ utils/
 
-# SHELL REMOVAL - Security hardening (v4.2)
-# Last RUN step — stubs shells so container has no interactive shell access
-# python3 remains available (it's /usr/local/bin/python3, not a shell)
-RUN for shell in sh bash; do \
-        if [ -f "/bin/$shell" ]; then \
-            mv "/bin/$shell" "/bin/${shell}.real" && \
-            echo "#!/bin/${shell}.real" > "/bin/${shell}.disabled" && \
-            echo 'echo "Shell disabled for security"' >> "/bin/${shell}.disabled" && \
-            echo 'exit 1' >> "/bin/${shell}.disabled" && \
-            chmod +x "/bin/${shell}.disabled" && \
-            ln -sf "/bin/${shell}.disabled" "/bin/$shell"; \
-        fi; \
-    done
+
 
 USER mcproxy
 

@@ -19,6 +19,12 @@ def setup_logging(
         use_stderr: If True, log to stderr (takes precedence over use_stdout).
         log_level: Logging level (default: INFO)
     """
+    # Clear existing handlers to avoid stale SysLogHandler crashes in containers
+    root_logger = logging.getLogger()
+    for h in root_logger.handlers[:]:
+        root_logger.removeHandler(h)
+        h.close()
+
     if use_stderr:
         handler: logging.Handler = logging.StreamHandler(sys.stderr)
         formatter = logging.Formatter(
@@ -29,17 +35,16 @@ def setup_logging(
         handler = logging.StreamHandler(sys.stdout)
         formatter = logging.Formatter(
             "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-            datefmt="%Y-%m-%d %H:%M:%S",
         )
     else:
-        handler = logging.handlers.SysLogHandler(address="/dev/log")
+        # StreamHandler default (SysLogHandler disabled for containers — no /dev/log)
+        handler = logging.StreamHandler(sys.stdout)
         formatter = logging.Formatter(
             "%(name)s[%(process)d]: [%(levelname)s] %(message)s"
         )
 
     handler.setFormatter(formatter)
 
-    root_logger = logging.getLogger()
     root_logger.setLevel(log_level)
     root_logger.addHandler(handler)
 

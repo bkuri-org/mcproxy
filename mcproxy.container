@@ -1,49 +1,43 @@
 [Unit]
-Description=MCProxy - MCP Gateway Aggregator (containerized)
-Documentation=https://github.com/bkuri-org/mcproxy
+Description=MCProxy MCP Gateway (Phase 3 - Bridge Network)
 After=network-online.target
 Wants=network-online.target
 
 [Container]
 Image=localhost/mcproxy:latest
 ContainerName=mcproxy
+Network=mcp-net
+PublishPort=12010:12010
+Exec=--log --port 12010 --host 0.0.0.0 --config /app/config/mcproxy.json
 
-# Phase 1: host networking so container can reach bare-metal MCP servers on localhost
-# Phase 3 (mcproxy-io1.3): switch to bridge + shared Podman network
-Network=host
-
-# Mount config (read-only), .env (read-only), data + cache (read-write)
-Volume=/srv/containers/mcproxy/config:/app/config:ro,Z
-Volume=/srv/containers/mcproxy/.env:/app/.env:ro,Z
+# Persistent volumes
+Volume=/srv/containers/mcproxy/config/mcproxy.json:/app/config/mcproxy.json:ro,Z
+Volume=/srv/containers/mcproxy/config/.env:/app/.env:ro,Z
 Volume=mcproxy-data:/app/data:Z
 Volume=mcproxy-cache:/app/cache:Z
+
+# Security
+ReadOnly=true
+SecurityOpt=no-new-privileges
+CapDrop=ALL
+
+# Resources
+Memory=512M
+MemorySwap=512M
+
+# Logging
+LogDriver=k8s-file
 
 # Environment
 Environment=PYTHONUNBUFFERED=1
 
-# Security hardening
-NoNewPrivileges=true
-SecurityLabelDisable=false
-ProtectHome=true
-ProtectSystem=strict
-PrivateTmp=true
-ReadOnlyRootfs=true
-CapDrop=ALL
-
-# Resource limits
-Memory=512M
-MemorySwap=512M
-
 # Labels
 Label=app=mcproxy
-Label=service=mcp
-Label=phase=1-host-network
+Label=phase=3-bridge
 
 [Service]
 Restart=always
-RestartSec=10
-TimeoutStartSec=120
-TimeoutStopSec=60
+TimeoutStartSec=60
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=multi-user.target default.target

@@ -1,38 +1,71 @@
 #!/bin/bash
 # MCProxy Container Deploy — run on server2 after git push
+# Phase 3: Bridge networking (mcp-net), k8s-file logs, no Quadlet dependency
 # Usage: ssh server2-auto /srv/containers/mcproxy/deploy.sh
 set -euo pipefail
 
-echo "=== MCProxy Container Deploy ==="
+echo "=== MCProxy Container Deploy (Phase 3 - Bridge) ==="
 cd /srv/containers/mcproxy
 
 # 1. Sync code from main branch
+echo "  → Pulling latest from origin/main..."
 git fetch origin
 git reset --hard origin/main
 
 # 2. Rebuild container image
+echo "  → Rebuilding image..."
 sudo podman build -t localhost/mcproxy:latest . 2>&1 | tail -2
 
-# 3. Copy Quadlet
-sudo cp mcproxy.container /etc/containers/systemd/mcproxy.container
-
-# 4. Sync config to bind-mounted config directory
+# 3. Copy config to bind-mounted config directory
+echo "  → Syncing config..."
+sudo mkdir -p config
 sudo cp mcproxy.json config/mcproxy.json
+# Preserve .env if it doesn't exist
+if [ ! -f config/.env ]; then
+    sudo cp .env.example config/.env 2>/dev/null || true
+fi
 
-# 5. Reload systemd and restart
+# 4. Remove existing container and start fresh on bridge network
+echo "  → Replacing mcproxy container..."
+sudo podman rm -f mcproxy 2>/dev/null || true
+
+sudo podman run -d --replace --name mcproxy \
+  --log-driver=k8s-file \
+  --network=mcp-net -p 12010:12010 \
+  --read-only \
+  -v /srv/containers/mcproxy/config/mcproxy.json:/app/config/mcproxy.json:ro,Z \
+  -v /srv/containers/mcproxy/config/.env:/app/.env:ro,Z \
+  -v mcproxy-data:/app/data:Z \
+  -v mcproxy-cache:/app/cache:Z \
+  -e PYTHONUNBUFFERED=1 \
+  --security-opt no-new-privileges --cap-drop=ALL \
+  --memory=512m --memory-swap=512m \
+  --label "app=mcproxy" \
+  --label "phase=3-bridge" \
+  localhost/mcproxy:latest \
+  --log --port 12010 --host 0.0.0.0 --config /app/config/mcproxy.json
+
+# 5. Generate systemd service (Quadlet doesn't generate .service for mcproxy)
+echo "  → Creating systemd service..."
+sudo podman generate systemd --new --name mcproxy \
+  --restart-policy=always \
+  --time 10 \
+  2>/dev/null | sudo tee /etc/systemd/system/mcproxy-container.service > /dev/null
 sudo systemctl daemon-reload
-sudo systemctl restart mcproxy.service
 
 # 6. Wait for startup with bounded retry loop
-MAX_RETRIES=12
+MAX_RETRIES=20
 SLEEP_SEC=5
 echo "  → Verifying health..."
 for i in $(seq 1 $MAX_RETRIES); do
-    if curl -sf http://localhost:12010/health > /dev/null 2>&1; then
-        echo "  ✓ Health check passed (attempt $i)"
+    if timeout 2 bash -c "echo > /dev/tcp/localhost/12010" 2>/dev/null; then
+        TOOL_COUNT=$(curl -sf -X POST http://localhost:12010/message \
+          -H "Content-Type: application/json" \
+          -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' 2>/dev/null \
+          | python3 -c "import sys,json; print(len(json.load(sys.stdin).get('result',{}).get('tools',[])))" 2>/dev/null || echo "?")
+        echo "  ✓ Port 12010 open, $TOOL_COUNT tools ready (attempt $i)"
         echo ""
-        echo "✅ Deployment complete!"
-        curl -s http://localhost:12010/health | python3 -m json.tool 2>/dev/null || echo "Health endpoint OK"
+        echo "✅ Deployment complete! mcproxy serving on bridge (mcp-net)"
         exit 0
     fi
     if [ $i -lt $MAX_RETRIES ]; then
@@ -42,5 +75,5 @@ for i in $(seq 1 $MAX_RETRIES); do
 done
 
 echo "❌ mcproxy health check FAILED after $MAX_RETRIES attempts"
-sudo podman logs mcproxy 2>&1 | tail -20
+sudo podman logs mcproxy 2>&1 | tail -30
 exit 1

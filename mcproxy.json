@@ -1,326 +1,35 @@
 {
   "servers": [
-    {
-      "name": "fear_greed_index",
-      "env": {
-        "PATH": "/usr/bin:/usr/local/bin:/bin"
-      },
-      "timeout": 120,
-      "enabled": true,
-      "type": "http",
-      "url": "http://localhost:12020/mcp"
-    },
-    {
-      "name": "sequential_thinking",
-      "env": {
-        "PATH": "/usr/bin:/usr/local/bin:/bin"
-      },
-      "timeout": 120,
-      "enabled": true,
-      "type": "http",
-      "url": "http://localhost:12021/mcp"
-    },
-    {
-      "name": "atom_of_thoughts",
-      "command": "/usr/bin/node",
-      "args": [
-        "/tmp/MCP_Atom_of_Thoughts/build/index.js"
-      ],
-      "env": {
-        "PATH": "/usr/bin:/usr/local/bin:/bin"
-      },
-      "timeout": 120,
-      "enabled": true
-    },
-    {
-      "name": "think_tool",
-      "env": {
-        "PATH": "/usr/bin:/usr/local/bin:/bin"
-      },
-      "timeout": 120,
-      "enabled": true,
-      "type": "http",
-      "url": "http://localhost:12023/mcp"
-    },
-    {
-      "name": "coinstats",
-      "env": {
-        "PATH": "/usr/bin:/usr/local/bin:/bin",
-        "COINSTATS_API_KEY": "${COINSTATS_API_KEY}"
-      },
-      "timeout": 120,
-      "enabled": true,
-      "type": "http",
-      "url": "http://localhost:12024/mcp"
-    },
-    {
-      "name": "llms_txt",
-      "env": {
-        "PATH": "/usr/bin:/usr/local/bin:/bin"
-      },
-      "timeout": 120,
-      "enabled": true,
-      "type": "http",
-      "url": "http://localhost:12025/mcp"
-    },
-    {
-      "name": "youtube",
-      "env": {
-        "PATH": "/usr/bin:/usr/local/bin:/bin"
-      },
-      "timeout": 120,
-      "enabled": true,
-      "type": "http",
-      "url": "http://localhost:12026/mcp"
-    },
-    {
-      "name": "wikipedia",
-      "env": {
-        "PATH": "/usr/bin:/usr/local/bin:/bin"
-      },
-      "timeout": 120,
-      "enabled": true,
-      "type": "http",
-      "url": "http://localhost:12027/mcp"
-    },
-    {
-      "name": "tmux",
-      "command": "/usr/bin/npx",
-      "args": [
-        "-y",
-        "@executeautomation/tmux-mcp-server"
-      ],
-      "env": {
-        "PATH": "/usr/bin:/usr/local/bin:/bin"
-      },
-      "timeout": 120,
-      "enabled": true
-    },
-    {
-      "name": "asset_price",
-      "env": {
-        "PATH": "/usr/bin:/usr/local/bin:/bin"
-      },
-      "timeout": 120,
-      "enabled": true,
-      "type": "http",
-      "url": "http://localhost:12028/mcp"
-    },
-    {
-      "name": "pure_md",
-      "env": {
-        "PATH": "/usr/bin:/usr/local/bin:/bin",
-        "PUREMD_API_KEY": "${PUREMD_API_KEY}"
-      },
-      "timeout": 120,
-      "enabled": true,
-      "type": "http",
-      "url": "http://localhost:12029/mcp"
-    },
-    {
-      "name": "playwright",
-      "command": "/usr/bin/npx",
-      "args": [
-        "-y",
-        "@executeautomation/playwright-mcp-server"
-      ],
-      "env": {
-        "PATH": "/usr/bin:/usr/local/bin:/bin"
-      },
-      "timeout": 120,
-      "enabled": true
-    },
-    {
-      "name": "perplexity_sonar",
-      "env": {
-        "PATH": "/usr/bin:/usr/local/bin:/bin",
-        "PERPLEXITY_MODEL": "sonar",
-        "PERPLEXITY_API_KEY": "${PERPLEXITY_API_KEY}"
-      },
-      "timeout": 120,
-      "enabled": true,
-      "type": "http",
-      "url": "http://localhost:12030/mcp"
-    },
-    {
-      "name": "jesse",
-      "type": "http",
-      "url": "http://localhost:12011/mcp",
-      "env": {
-        "PATH": "/usr/bin:/usr/local/bin:/bin",
-        "JESSE_URL": "http://localhost:9100",
-        "JESSE_PASSWORD": "jessesecurepassword2025",
-        "PYTHONPATH": "/srv/containers/jesse:/srv/containers/jesse-baremetal/venv/lib/python3.11/site-packages",
-        "LLM_ENDPOINT": "https://api.perplexity.ai",
-        "LLM_API_KEY": "${PERPLEXITY_API_KEY}"
-      },
-      "timeout": 350,
-      "tool_timeout": 600,
-      "tool_timeouts": {
-        "backtest": 900,
-        "optimize": 1200,
-        "walk_forward": 1800
-      },
-      "enabled": true
-    },
-    {
-      "name": "coinmarketcap",
-      "command": "/srv/containers/mcproxy/venv/bin/python",
-      "args": [
-        "-m",
-        "coin_api_mcp"
-      ],
-      "env": {
-        "PATH": "/usr/bin:/usr/local/bin:/bin",
-        "COINMARKETCAP_API_KEY": "${CMC_API_KEY}"
-      },
-      "timeout": 120,
-      "enabled": true
-    },
-    {
-      "name": "home_assistant",
-      "env": {
-        "PATH": "/usr/bin:/usr/local/bin:/bin",
-        "HA_AGENT_URL": "http://192.168.50.99:8099",
-        "HA_AGENT_KEY": "ZUAUTBnvtXROPLmCVU0WZPKGN50oBA6AXbneKUfyZvo"
-      },
-      "timeout": 120,
-      "enabled": true,
-      "type": "http",
-      "url": "http://localhost:12032/mcp"
-    },
-    {
-      "name": "zilliqa_insights",
-      "timeout": 120,
-      "enabled": true,
-      "url": "https://insights.mcp.zilliqa.com/mcp"
-    }
+    {"name": "fear_greed_index", "type": "http", "url": "http://mcp-fear-greed-index:8080/mcp", "timeout": 120, "enabled": true},
+    {"name": "sequential_thinking", "type": "http", "url": "http://mcp-sequential-thinking:8080/mcp", "timeout": 120, "enabled": true},
+    {"name": "atom_of_thoughts", "type": "http", "url": "http://mcp-atom-of-thoughts:8080/mcp", "timeout": 120, "enabled": true},
+    {"name": "think_tool", "type": "http", "url": "http://mcp-think-tool:8080/mcp", "timeout": 120, "enabled": true},
+    {"name": "coinstats", "type": "http", "url": "http://mcp-coinstats:8080/mcp", "env": {"COINSTATS_API_KEY": "${COINSTATS_API_KEY}"}, "timeout": 120, "enabled": true},
+    {"name": "llms_txt", "type": "http", "url": "http://mcp-llms-txt:8080/mcp", "timeout": 120, "enabled": true},
+    {"name": "youtube", "type": "http", "url": "http://mcp-youtube:8080/mcp", "timeout": 120, "enabled": true},
+    {"name": "wikipedia", "type": "http", "url": "http://mcp-wikipedia:8080/mcp", "timeout": 120, "enabled": true},
+    {"name": "asset_price", "type": "http", "url": "http://mcp-asset-price:8080/mcp", "timeout": 120, "enabled": true},
+    {"name": "pure_md", "type": "http", "url": "http://mcp-pure-md:8080/mcp", "timeout": 120, "enabled": true},
+    {"name": "playwright", "type": "http", "url": "http://mcp-playwright:8080/mcp", "timeout": 120, "enabled": true},
+    {"name": "perplexity_sonar", "type": "http", "url": "http://mcp-perplexity-sonar:8080/mcp", "timeout": 120, "enabled": true},
+    {"name": "jesse", "type": "http", "url": "http://10.89.1.1:12011/mcp", "timeout": 120, "enabled": true},
+    {"name": "home_assistant", "type": "http", "url": "http://mcp-home-assistant:8080/mcp", "timeout": 120, "enabled": true}
   ],
+  "blocklist_enabled": false,
   "namespaces": {
-    "thinking": {
-      "servers": [
-        "sequential_thinking",
-        "atom_of_thoughts",
-        "think_tool"
-      ],
-      "isolated": false,
-      "extends": []
-    },
-    "financial": {
-      "servers": [
-        "fear_greed_index",
-        "coinstats",
-        "asset_price",
-        "coinmarketcap"
-      ],
-      "isolated": false
-    },
-    "docs": {
-      "servers": [
-        "llms_txt",
-        "wikipedia"
-      ],
-      "isolated": false
-    },
-    "web": {
-      "servers": [
-        "pure_md",
-        "perplexity_sonar",
-        "youtube"
-      ],
-      "isolated": false
-    },
-    "automation": {
-      "servers": [
-        "tmux",
-        "playwright"
-      ],
-      "isolated": false
-    },
-    "trading": {
-      "servers": [
-        "jesse"
-      ],
-      "isolated": true
-    },
-    "home": {
-      "servers": [
-        "home_assistant"
-      ],
-      "isolated": false,
-      "extends": []
-    },
-    "blockchain": {
-      "servers": [
-        "zilliqa_insights"
-      ],
-      "isolated": false,
-      "extends": []
-    }
+    "thinking": {"servers": ["sequential_thinking", "atom_of_thoughts", "think_tool"], "isolated": false},
+    "financial": {"servers": ["asset_price", "coinstats", "fear_greed_index"], "isolated": false},
+    "web": {"servers": ["wikipedia", "pure_md", "youtube"], "isolated": false},
+    "docs": {"servers": ["llms_txt"], "isolated": false},
+    "browser": {"servers": ["playwright", "perplexity_sonar"], "isolated": true},
+    "trading": {"servers": ["jesse"], "isolated": true},
+    "home": {"servers": ["home_assistant"], "isolated": false}
   },
   "groups": {
-    "safe": {
-      "namespaces": [
-        "thinking",
-        "docs"
-      ]
-    },
-    "default": {
-      "namespaces": [
-        "thinking",
-        "docs",
-        "web"
-      ]
-    },
-    "broad": {
-      "namespaces": [
-        "thinking",
-        "docs",
-        "web",
-        "financial",
-        "blockchain",
-        "home"
-      ]
-    },
-    "full": {
-      "namespaces": [
-        "thinking",
-        "docs",
-        "web",
-        "financial",
-        "blockchain",
-        "automation",
-        "home",
-        "!trading"
-      ]
-    },
-    "trading": {
-      "namespaces": [
-        "thinking",
-        "docs",
-        "web",
-        "financial",
-        "blockchain",
-        "!trading"
-      ]
-    }
+    "research": {"namespaces": ["thinking", "docs", "web", "financial"]},
+    "maxitrader": {"namespaces": ["thinking", "financial", "docs", "web", "!trading"]},
+    "automation": {"namespaces": ["thinking", "home"]}
   },
-  "_hot_reload_test": "test_1772485402.0523033",
-  "search": {
-    "min_words": 2,
-    "max_tools": 5,
-    "cache_ttl": 300,
-    "list_brief_threshold": 300
-  },
-  "security": {
-    "blocklist_enabled": false
-  },
-  "sandbox": {
-    "timeout_secs": 900,
-    "pool": {
-      "size": 3,
-      "max_size": 10,
-      "idle_timeout_secs": 300
-    }
-  }
+  "auth": {"enabled": false},
+  "dispatch": {"namespace": "thinking"}
 }

@@ -1,63 +1,31 @@
 #!/bin/bash
-# push-deploy.sh - Push to origin and deploy to server2 via git pull
+# push-deploy.sh - Push to origin and deploy to server2 via deploy.sh
 # Usage: ./scripts/push-deploy.sh [git-push-args...]
+# Only deploys from main branch.
 
 set -e
 
-# Get current branch
 BRANCH=$(git rev-parse --abbrev-ref HEAD)
 
-# Only deploy from main branch
 if [ "$BRANCH" != "main" ]; then
     echo "⚠️  Not on main branch (currently on $BRANCH), skipping deployment"
     git push "$@"
     exit 0
 fi
 
-# Check if there are uncommitted changes
 if ! git diff-index --quiet HEAD --; then
     echo "⚠️  Uncommitted changes detected, please commit first"
     exit 1
 fi
 
-# Push to remote
 echo "📤 Pushing to origin..."
 git push "$@"
 
-# Check if push succeeded
 if [ $? -eq 0 ]; then
-    echo "✓ Push successful"
     echo ""
-    echo "🚀 Deploying to server2..."
-    
-    # Deploy to server2
-    ssh server2-auto << 'ENDSSH'
-set -e
-cd /srv/containers/mcproxy
-echo "  → Pulling latest changes..."
-git pull
-echo "  → Restarting mcproxy service..."
-sudo systemctl restart mcproxy
-sleep 2
-echo "  → Checking service status..."
-if sudo systemctl is-active --quiet mcproxy; then
-    echo "  ✓ mcproxy is running"
-else
-    echo "  ✗ mcproxy failed to start"
-    sudo systemctl status mcproxy --no-pager
-    exit 1
-fi
-ENDSSH
-    
-    if [ $? -eq 0 ]; then
-        echo ""
-        echo "✅ Deployment complete!"
-    else
-        echo ""
+    echo "🚀 Deploying to server2 via deploy.sh..."
+    ssh server2-auto 'cd /srv/containers/mcproxy && sudo bash deploy.sh' && \
+        echo "" && \
+        echo "✅ Deployment complete!" || \
         echo "❌ Deployment failed"
-        exit 1
-    fi
-else
-    echo "❌ Push failed, skipping deployment"
-    exit 1
 fi
