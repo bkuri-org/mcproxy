@@ -383,3 +383,382 @@ class TestExtractBadParam:
         from server.handlers.tools.router import _extract_bad_param
 
         assert _extract_bad_param("field required") is None
+
+
+# ============================================================================
+# Part D: Auto-inspect enrichment (MCPROXY-ibi)
+# ============================================================================
+
+
+class TestAutoInspectInRouter:
+    """Tests for _build_param_error_data with auto-inspect fields."""
+
+    def test_includes_tool_name(self):
+        """Error data includes server__tool formatted name."""
+        from server.handlers.tools.router import _build_param_error_data
+        from unittest.mock import MagicMock
+
+        registry = MagicMock()
+        registry._manifest = {
+            "tools_by_server": {
+                "test_server": [
+                    {
+                        "name": "read_file",
+                        "description": "Read file contents",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "path": {"type": "string"},
+                            },
+                            "required": ["path"],
+                        },
+                    }
+                ]
+            }
+        }
+
+        data = _build_param_error_data(
+            "test_server", "read_file",
+            "Missing required parameter 'path'",
+            registry,
+        )
+        assert data is not None
+        assert data["tool_name"] == "test_server__read_file"
+
+    def test_includes_input_schema(self):
+        """Error data includes full inputSchema."""
+        from server.handlers.tools.router import _build_param_error_data
+        from unittest.mock import MagicMock
+
+        registry = MagicMock()
+        registry._manifest = {
+            "tools_by_server": {
+                "test_server": [
+                    {
+                        "name": "search",
+                        "description": "Search things",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "query": {"type": "string"},
+                                "limit": {"type": "integer"},
+                            },
+                            "required": ["query"],
+                        },
+                    }
+                ]
+            }
+        }
+
+        data = _build_param_error_data(
+            "test_server", "search",
+            "Unknown parameter 'quey'",
+            registry,
+        )
+        assert data is not None
+        assert "inputSchema" in data
+        assert data["inputSchema"]["properties"]["query"] is not None
+
+    def test_includes_description(self):
+        """Error data includes tool description."""
+        from server.handlers.tools.router import _build_param_error_data
+        from unittest.mock import MagicMock
+
+        registry = MagicMock()
+        registry._manifest = {
+            "tools_by_server": {
+                "test_server": [
+                    {
+                        "name": "search",
+                        "description": "Search things",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "query": {"type": "string"},
+                            },
+                            "required": ["query"],
+                        },
+                    }
+                ]
+            }
+        }
+
+        data = _build_param_error_data(
+            "test_server", "search",
+            "Unknown parameter 'quey'",
+            registry,
+        )
+        assert data is not None
+        assert data["description"] == "Search things"
+
+    def test_includes_usage_example(self):
+        """Error data includes generated usage example."""
+        from server.handlers.tools.router import _build_param_error_data
+        from unittest.mock import MagicMock
+
+        registry = MagicMock()
+        registry._manifest = {
+            "tools_by_server": {
+                "test_server": [
+                    {
+                        "name": "search",
+                        "description": "Search things",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "query": {"type": "string"},
+                                "limit": {"type": "integer"},
+                            },
+                            "required": ["query"],
+                        },
+                    }
+                ]
+            }
+        }
+
+        data = _build_param_error_data(
+            "test_server", "search",
+            "Unknown parameter 'quey'",
+            registry,
+        )
+        assert data is not None
+        assert "usage_example" in data
+        assert "api.server('test_server').search" in data["usage_example"]
+        assert "query" in data["usage_example"]
+
+    def test_empty_description_returns_empty_string(self):
+        """Empty description does not cause errors."""
+        from server.handlers.tools.router import _build_param_error_data
+        from unittest.mock import MagicMock
+
+        registry = MagicMock()
+        registry._manifest = {
+            "tools_by_server": {
+                "test_server": [
+                    {
+                        "name": "toggle",
+                        "description": "",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "entity_id": {"type": "string"},
+                            },
+                            "required": ["entity_id"],
+                        },
+                    }
+                ]
+            }
+        }
+
+        data = _build_param_error_data(
+            "test_server", "toggle",
+            "Missing required parameter 'entity_id'",
+            registry,
+        )
+        assert data is not None
+        assert data["description"] == ""
+        assert "toggle" in data["usage_example"]
+
+    def test_no_schema_returns_none(self):
+        """Tool without inputSchema returns None."""
+        from server.handlers.tools.router import _build_param_error_data
+        from unittest.mock import MagicMock
+
+        registry = MagicMock()
+        registry._manifest = {
+            "tools_by_server": {
+                "test_server": [
+                    {"name": "noop", "description": "Does nothing"},
+                ]
+            }
+        }
+
+        data = _build_param_error_data(
+            "test_server", "noop",
+            "Missing required parameter 'x'",
+            registry,
+        )
+        assert data is None
+
+
+class TestAutoInspectInServerManager:
+    """Tests for _enrich_param_error with usage example (MCPROXY-ibi)."""
+
+    def test_includes_usage_example(self):
+        """Enriched error message includes usage example."""
+        error_msg = "Tool call failed: Unknown parameter 'quey'"
+        result = _enrich_param_error("search", "test_server", error_msg, SAMPLE_TOOLS)
+        assert "Usage:" in result
+        assert "api.server('test_server').search" in result
+
+    def test_usage_example_for_missing_param(self):
+        """Usage example included for missing parameter errors."""
+        error_msg = "Tool call failed: Missing required parameter 'path'"
+        result = _enrich_param_error("read_file", "test_server", error_msg, SAMPLE_TOOLS)
+        assert "Usage:" in result
+        assert "api.server('test_server').read_file" in result
+
+    def test_no_usage_for_non_param_error(self):
+        """Non-param errors don't get usage appended."""
+        error_msg = "Tool call failed: Internal server error"
+        result = _enrich_param_error("search", "test_server", error_msg, SAMPLE_TOOLS)
+        assert "Usage:" not in result
+
+    def test_no_usage_for_missing_tool(self):
+        """Missing tool doesn't cause errors in enrichment."""
+        error_msg = "Tool call failed: Missing required parameter 'path'"
+        result = _enrich_param_error(
+            "nonexistent", "test_server", error_msg, SAMPLE_TOOLS
+        )
+        assert "Usage:" not in result
+
+
+class TestSingleMatchAutoReturn:
+    """Tests for search single-match auto-return (MCPROXY-ibi)."""
+
+    def test_single_tool_match_adds_best_match(self):
+        """Single tool match includes best_match with full schema."""
+        from server.handlers.tools.search import _enrich_single_match
+        from unittest.mock import MagicMock
+
+        registry = MagicMock()
+        registry._manifest = {
+            "tools_by_server": {
+                "wikipedia": [
+                    {
+                        "name": "search",
+                        "description": "Search Wikipedia",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "query": {"type": "string"},
+                                "limit": {"type": "integer"},
+                            },
+                            "required": ["query"],
+                        },
+                    }
+                ]
+            }
+        }
+        registry.get_tools.return_value = registry._manifest["tools_by_server"]["wikipedia"]
+
+        results = {
+            "matches": {"servers": [], "categories": [], "tools": ["wikipedia:search"]},
+            "total_matches": 1,
+        }
+        _enrich_single_match(results, registry, None)
+
+        assert "best_match" in results
+        bm = results["best_match"]
+        assert bm["server"] == "wikipedia"
+        assert bm["name"] == "search"
+        assert bm["description"] == "Search Wikipedia"
+        assert "inputSchema" in bm
+        assert "usage_example" in bm
+        assert "api.server('wikipedia').search" in bm["usage_example"]
+
+    def test_multiple_tool_matches_no_best_match(self):
+        """Multiple tool matches do not add best_match."""
+        from server.handlers.tools.search import _enrich_single_match
+        from unittest.mock import MagicMock
+
+        registry = MagicMock()
+
+        results = {
+            "matches": {
+                "servers": [],
+                "categories": [],
+                "tools": ["wikipedia:search", "wikidata:search"],
+            },
+            "total_matches": 2,
+        }
+        _enrich_single_match(results, registry, None)
+
+        assert "best_match" not in results
+
+    def test_zero_tool_matches_no_best_match(self):
+        """Zero tool matches do not add best_match."""
+        from server.handlers.tools.search import _enrich_single_match
+
+        results = {
+            "matches": {"servers": [], "categories": [], "tools": []},
+            "total_matches": 0,
+        }
+        _enrich_single_match(results, None, None)
+
+        assert "best_match" not in results
+
+    def test_no_registry_no_best_match(self):
+        """Missing registry does not add best_match."""
+        from server.handlers.tools.search import _enrich_single_match
+
+        results = {
+            "matches": {"servers": [], "categories": [], "tools": ["foo:bar"]},
+            "total_matches": 1,
+        }
+        _enrich_single_match(results, None, None)
+
+        assert "best_match" not in results
+
+    def test_server_match_only_no_best_match(self):
+        """Server name match (with no tool match) does not add best_match."""
+        from server.handlers.tools.search import _enrich_single_match
+
+        results = {
+            "matches": {"servers": ["wikipedia"], "categories": [], "tools": []},
+            "total_matches": 1,
+        }
+        _enrich_single_match(results, None, None)
+
+        assert "best_match" not in results
+
+    def test_best_match_tool_not_found_no_error(self):
+        """If the tool isn't in the manifest, no best_match is added."""
+        from server.handlers.tools.search import _enrich_single_match
+        from unittest.mock import MagicMock
+
+        registry = MagicMock()
+        registry._manifest = {"tools_by_server": {"wikipedia": []}}
+        registry.get_tools.return_value = []
+
+        results = {
+            "matches": {"servers": [], "categories": [], "tools": ["wikipedia:search"]},
+            "total_matches": 1,
+        }
+        _enrich_single_match(results, registry, None)
+
+        assert "best_match" not in results
+
+    def test_best_match_with_namespace_filter(self):
+        """Namespace filter is passed to get_tools."""
+        from server.handlers.tools.search import _enrich_single_match
+        from unittest.mock import MagicMock
+
+        registry = MagicMock()
+        registry._manifest = {
+            "tools_by_server": {
+                "wikipedia": [
+                    {
+                        "name": "search",
+                        "description": "Search Wikipedia",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "query": {"type": "string"},
+                            },
+                            "required": ["query"],
+                        },
+                    }
+                ]
+            }
+        }
+        registry.get_tools.return_value = registry._manifest["tools_by_server"]["wikipedia"]
+
+        results = {
+            "matches": {"servers": [], "categories": [], "tools": ["wikipedia:search"]},
+            "total_matches": 1,
+        }
+        _enrich_single_match(results, registry, "docs")
+
+        assert "best_match" in results
+        registry.get_tools.assert_called_with("wikipedia", "docs")

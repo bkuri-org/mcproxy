@@ -10,6 +10,7 @@ from typing import Any, Callable, Dict, Optional
 
 from logging_config import get_logger
 from manifest import CapabilityRegistry
+from manifest.example_gen import generate_tool_example
 from tool_aggregator import untransform_tool_name
 from utils.param_normalize import normalize_params
 from utils.fuzzy_match import suggest_best_match
@@ -219,12 +220,16 @@ def _build_param_error_data(
     tools_by_server = capability_registry._manifest.get("tools_by_server", {})
     server_tools = tools_by_server.get(server_name, [])
 
-    schema = None
+    tool_def = None
     for t in server_tools:
         if t.get("name") == tool_name:
-            schema = t.get("inputSchema")
+            tool_def = t
             break
 
+    if not tool_def:
+        return None
+
+    schema = tool_def.get("inputSchema")
     if not schema:
         return None
 
@@ -236,8 +241,14 @@ def _build_param_error_data(
         return None
 
     data: Dict[str, Any] = {
+        "tool_name": f"{server_name}__{tool_name}",
         "available_parameters": available_params,
         "required_parameters": required,
+        "inputSchema": schema,
+        "description": tool_def.get("description", ""),
+        "usage_example": generate_tool_example(
+            server_name, tool_name, schema
+        ),
     }
 
     # Extract bad param name and fuzzy-match
