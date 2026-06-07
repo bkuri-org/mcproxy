@@ -18,6 +18,9 @@
     {"name": "coinmarketcap", "type": "http", "url": "https://gateway.pipeworx.io/coinmarketcap/mcp", "timeout": 30, "connect_timeout": 5, "enabled": true}
   ],
   "blocklist_enabled": false,
+  "search": {
+    "list_brief_threshold": 500
+  },
   "namespaces": {
     "thinking": {"servers": ["sequential_thinking", "atom_of_thoughts", "think_tool"], "isolated": false},
     "financial": {"servers": ["asset_price", "coinstats", "fear_greed_index", "zilliqa_insights", "coinmarketcap"], "isolated": false},
@@ -25,7 +28,8 @@
     "docs": {"servers": ["llms_txt"], "isolated": false},
     "browser": {"servers": ["playwright", "perplexity_sonar"], "isolated": true},
     "trading": {"servers": ["jesse"], "isolated": true},
-    "home": {"servers": ["home_assistant"], "isolated": false}
+    "home": {"servers": ["home_assistant"], "isolated": false},
+    "ops": {"servers": ["fear_greed_index", "sequential_thinking", "atom_of_thoughts", "think_tool", "coinstats", "llms_txt", "youtube", "wikipedia", "asset_price", "pure_md", "playwright", "perplexity_sonar", "jesse", "home_assistant", "zilliqa_insights", "coinmarketcap"], "isolated": false}
   },
   "groups": {
     "research": {"namespaces": ["thinking", "docs", "web", "financial"]},
