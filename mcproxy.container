@@ -40,9 +40,6 @@ Restart=always
 RestartSec=10
 TimeoutStartSec=120
 TimeoutStopSec=60
-ProtectHome=true
-ProtectSystem=strict
-PrivateTmp=true
 
 [Install]
 WantedBy=multi-user.target
