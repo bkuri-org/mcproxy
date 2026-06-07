@@ -15,6 +15,100 @@ from typing import Any, Dict, List, Optional
 import requests
 
 from logging_config import get_logger
+from utils.fuzzy_match import suggest_best_match
+
+logger = get_logger(__name__)
+
+
+# Type mappings for human-friendly validation error messages
+_TYPE_DISPLAY = {
+    "string": "string (text)",
+    "integer": "number",
+    "number": "number",
+    "boolean": "boolean (true/false)",
+    "array": "list/array",
+    "object": "object/dict",
+}
+
+
+# Pydantic error type -> human-friendly label
+_PYDANTIC_TYPE_MAP = {
+    "missing": "missing",
+    "value_error.missing": "missing",
+    "extra_forbidden": "extra",
+    "extra": "extra",
+}
+
+
+def _format_upstream_error(tool_name: str, error_details: dict) -> str:
+    """Format upstream JSON-RPC errors into human-friendly messages.
+
+    Converts raw Pydantic validation errors into actionable messages
+    with fuzzy-match suggestions for parameter names.
+
+    Args:
+        tool_name: Name of the tool that was called
+        error_details: The 'error' dict from the upstream JSON-RPC response
+
+    Returns:
+        Human-readable error message
+    """
+    message = error_details.get("message", "")
+    data = error_details.get("data")
+
+    # Check if data is a list of Pydantic validation errors
+    if isinstance(data, list):
+        parts = []
+        for err in data:
+            if not isinstance(err, dict):
+                continue
+            parts.append(_format_pydantic_error(err))
+        if parts:
+            return "; ".join(parts)
+
+    # Non-Pydantic: use message as-is
+    return message
+
+
+def _format_pydantic_error(err: dict) -> str:
+    """Format a single Pydantic validation error into a human-friendly message.
+
+    Args:
+        err: A Pydantic error dict with 'type', 'loc', 'msg' fields
+
+    Returns:
+        Human-readable error string
+    """
+    err_type = err.get("type", "")
+    loc = err.get("loc", [])
+    msg = err.get("msg", "")
+
+    # Extract the parameter name from 'loc'
+    # Pydantic loc is like ["body", "param_name"] or ["body", "nested", "param"]
+    param = loc[-1] if loc and isinstance(loc[-1], str) else None
+
+    # Missing required parameter
+    if "missing" in err_type or "field required" in msg.lower():
+        if param:
+            return f"Missing required parameter '{param}'"
+        return msg
+
+    # Extra/unknown parameter
+    if err_type in ("extra_forbidden", "extra") or "extra" in msg.lower():
+        if param:
+            return f"Unknown parameter '{param}'"
+        return msg
+
+    # Type mismatch
+    if "json_type" in err_type or "type_error" in err_type or isinstance(msg, str) and "expected" in msg.lower():
+        if param:
+            input_type = err.get("input")
+            input_display = type(input_type).__name__ if input_type is not None else "wrong type"
+            return f"Parameter '{param}' has an invalid value"
+        return msg
+
+    # Fallback: use message as-is
+    return msg if isinstance(msg, str) else str(msg)
 
 logger = get_logger(__name__)
 
@@ -201,10 +295,11 @@ class HTTPServerConnector:
 
         if "error" in response:
             error_details = response.get("error", {})
-            error_msg = str(error_details)
-            self._last_error = error_msg
+            error_msg = _format_upstream_error(tool_name, error_details)
+            raw_msg = str(error_details)
+            self._last_error = raw_msg
             logger.error(
-                f"[CALL_TOOL_REMOTE_ERROR] tool={tool_name} error={error_details}"
+                f"[CALL_TOOL_REMOTE_ERROR] tool={tool_name} error={raw_msg}"
             )
             raise RuntimeError(f"Tool call failed: {error_msg}")
 

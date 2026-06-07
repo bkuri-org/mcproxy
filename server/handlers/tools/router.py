@@ -12,6 +12,7 @@ from logging_config import get_logger
 from manifest import CapabilityRegistry
 from tool_aggregator import untransform_tool_name
 from utils.param_normalize import normalize_params
+from utils.fuzzy_match import suggest_best_match
 
 from .execute import handle_execute, handle_trace
 from .help import handle_help
@@ -160,24 +161,120 @@ async def _handle_direct_call(
         return {"jsonrpc": "2.0", "id": msg_id, "result": {"content": content}}
 
     except ValueError as e:
-        return {
-            "jsonrpc": "2.0",
-            "id": msg_id,
-            "error": {"code": -32601, "message": str(e)},
-        }
+        return {"jsonrpc": "2.0", "id": msg_id, "error": {"code": -32601, "message": str(e)}}
     except RuntimeError as e:
-        return {
-            "jsonrpc": "2.0",
-            "id": msg_id,
-            "error": {"code": -32000, "message": str(e)},
-        }
+        # Enrich parameter errors with schema hints from capability_registry
+        error_msg = str(e)
+        error_data = _build_param_error_data(
+            server_name, upstream_tool, error_msg, capability_registry
+        )
+        error_resp = {"code": -32000, "message": error_msg}
+        if error_data is not None:
+            error_resp["data"] = error_data
+        return {"jsonrpc": "2.0", "id": msg_id, "error": error_resp}
     except Exception as e:
         logger.error(f"[DIRECT_CALL_ERROR] {server_name}__{tool}: {e}")
-        return {
-            "jsonrpc": "2.0",
-            "id": msg_id,
-            "error": {"code": -32000, "message": f"Tool execution failed: {e}"},
-        }
+        return {"jsonrpc": "2.0", "id": msg_id, "error": {"code": -32000, "message": f"Tool execution failed: {e}"}}
+
+
+# Patterns that indicate parameter validation errors
+_PARAM_ERROR_PATTERNS = (
+    "missing required parameter",
+    "unknown parameter",
+    "field required",
+    "extra forbidden",
+    "extra inputs not permitted",
+    "unexpected keyword argument",
+)
+
+
+def _build_param_error_data(
+    server_name: str,
+    tool_name: str,
+    error_msg: str,
+    capability_registry: Optional[CapabilityRegistry] = None,
+) -> Optional[Dict[str, Any]]:
+    """Build enriched error data for parameter validation errors.
+
+    Looks up the tool's inputSchema from the manifest and includes
+    available/required parameters and fuzzy suggestions in the error
+    response data field.
+
+    Args:
+        server_name: Server name
+        tool_name: Tool name
+        error_msg: The error message to analyze
+        capability_registry: Capability registry with manifest data
+
+    Returns:
+        Dict with enrichment data, or None if not a param error
+    """
+    error_lower = error_msg.lower()
+    if not any(pat in error_lower for pat in _PARAM_ERROR_PATTERNS):
+        return None
+
+    if not capability_registry or not capability_registry._manifest:
+        return None
+
+    tools_by_server = capability_registry._manifest.get("tools_by_server", {})
+    server_tools = tools_by_server.get(server_name, [])
+
+    schema = None
+    for t in server_tools:
+        if t.get("name") == tool_name:
+            schema = t.get("inputSchema")
+            break
+
+    if not schema:
+        return None
+
+    properties = schema.get("properties", {})
+    required = schema.get("required", [])
+    available_params = list(properties.keys())
+
+    if not available_params:
+        return None
+
+    data: Dict[str, Any] = {
+        "available_parameters": available_params,
+        "required_parameters": required,
+    }
+
+    # Extract bad param name and fuzzy-match
+    bad_param = _extract_bad_param(error_msg)
+    if bad_param:
+        suggestion = suggest_best_match(
+            bad_param, available_params, threshold=0.5, max_suggestions=3
+        )
+        if suggestion:
+            data["suggestion"] = suggestion
+
+    return data
+
+
+def _extract_bad_param(error_msg: str) -> Optional[str]:
+    """Extract a parameter name from an error message.
+
+    Looks for patterns like "Unknown parameter 'filepath'" or
+    "Missing required parameter 'path'".
+
+    Args:
+        error_msg: Error message to extract from
+
+    Returns:
+        Extracted parameter name, or None
+    """
+    import re
+
+    # Match single-quoted param name
+    match = re.search(r"parameter '([^']+)'", error_msg)
+    if match:
+        return match.group(1)
+    # Match double-quoted param name
+    match = re.search(r'parameter "([^"]+)"', error_msg)
+    if match:
+        return match.group(1)
+    return None
 
 
 def _normalize_result(result: Any) -> list:
@@ -296,18 +393,11 @@ async def handle_tools_call(
             )
 
         elif action == "search":
-            merged_config = {**(mcp_config or {}), **(mcproxy_config or {})}
-            search_config = merged_config.get("search", {})
-            min_words = search_config.get("min_words", 2)
-            max_tools = search_config.get("max_tools", 5)
-
             return await handle_search(
                 msg_id,
                 arguments,
                 connection_namespace=namespace,
                 capability_registry=capability_registry,
-                min_words=min_words,
-                max_tools=max_tools,
             )
 
         elif action == "inspect":
