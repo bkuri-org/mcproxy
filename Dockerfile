@@ -42,6 +42,7 @@ COPY --chown=mcproxy:mcproxy server/ server/
 COPY --chown=mcproxy:mcproxy server/handlers/ server/handlers/
 COPY --chown=mcproxy:mcproxy server/handlers/tools/ server/handlers/tools/
 COPY --chown=mcproxy:mcproxy utils/ utils/
+COPY --chown=mcproxy:mcproxy reasoning/ reasoning/
 
 
 
