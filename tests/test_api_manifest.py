@@ -238,63 +238,78 @@ class TestManifestQuery:
         registry.build(sample_servers_tools)
         query = ManifestQuery(registry)
 
-        results = query.search("navigate", max_depth=2)
+        results = query.search("navigate")
         tool_matches = [m for m in results["matches"]["tools"] if "navigate" in m]
         assert len(tool_matches) >= 1
 
-    def test_search_depth_0(
+    def test_search_by_prefixed_tool_name(
+        self,
+        sample_servers_tools: Dict[str, List[Dict[str, Any]]],
+    ):
+        registry = CapabilityRegistry()
+        registry.build(sample_servers_tools)
+        query = ManifestQuery(registry)
+
+        # Searching by prefixed name (as seen in tools/list) should match
+        results = query.search("playwright__navigate")
+        tool_matches = [m for m in results["matches"]["tools"] if "navigate" in m]
+        assert len(tool_matches) >= 1
+
+    def test_search_empty_query_overview(
         self, sample_servers_tools: Dict[str, List[Dict[str, Any]]]
     ):
         registry = CapabilityRegistry()
         registry.build(sample_servers_tools)
         query = ManifestQuery(registry)
 
-        results = query.search("playwright", max_depth=0)
-
-        for entry in results["results"]:
-            assert "categories" not in entry
-            assert "tools" not in entry
-
-    def test_search_depth_1(
-        self, sample_servers_tools: Dict[str, List[Dict[str, Any]]]
-    ):
-        registry = CapabilityRegistry()
-        registry.build(sample_servers_tools)
-        query = ManifestQuery(registry)
-
-        results = query.search("playwright", max_depth=1)
-
+        # Empty query returns server list with tool counts (no matched_tools)
+        results = query.search("")
         for entry in results["results"]:
             assert "categories" in entry
+            assert "tools" in entry
+            assert "matched_tools" not in entry
 
-    def test_search_depth_2(
+    def test_search_query_returns_tools(
         self, sample_servers_tools: Dict[str, List[Dict[str, Any]]]
     ):
         registry = CapabilityRegistry()
         registry.build(sample_servers_tools)
         query = ManifestQuery(registry)
 
-        results = query.search("playwright", max_depth=2)
-
+        # Non-empty query returns matching tools
+        results = query.search("playwright")
         for entry in results["results"]:
-            assert "matched_tools" in entry
+            if entry["server"] == "playwright":
+                assert "matched_tools" in entry
+                # Server match expands all tools
+                assert len(entry["matched_tools"]) == 3
 
-    def test_search_depth_3_full_schema(
+    def test_search_server_match_expands_all_tools(
+        self, sample_servers_tools: Dict[str, List[Dict[str, Any]]]
+    ):
+        """When query matches a server name, all tools are returned (collapsed expansion)."""
+        registry = CapabilityRegistry()
+        registry.build(sample_servers_tools)
+        query = ManifestQuery(registry)
+
+        results = query.search("crypto")
+        crypto_entry = next(
+            r for r in results["results"] if r["server"] == "crypto"
+        )
+        assert len(crypto_entry["matched_tools"]) == 2
+
+    def test_search_tool_description_truncated(
         self, sample_servers_tools: Dict[str, List[Dict[str, Any]]]
     ):
         registry = CapabilityRegistry()
         registry.build(sample_servers_tools)
         query = ManifestQuery(registry)
 
-        results = query.search("navigate", max_depth=3)
-
-        found_schema = False
+        results = query.search("navigate")
         for entry in results["results"]:
             for tool in entry.get("matched_tools", []):
-                if "inputSchema" in tool:
-                    found_schema = True
-                    break
-        assert found_schema
+                if "description" in tool:
+                    assert len(tool["description"]) <= 200
 
     def test_search_with_namespace_filter(
         self,

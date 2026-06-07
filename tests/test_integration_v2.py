@@ -60,7 +60,7 @@ class TestSearchExecuteFlow:
 
     def test_search_finds_tool(self, integrated_system: Dict[str, Any]):
         query = integrated_system["query"]
-        results = query.search("navigate", max_depth=2)
+        results = query.search("navigate")
 
         assert results["total_matches"] >= 1
         assert any("navigate" in m for m in results["matches"]["tools"])
@@ -405,7 +405,7 @@ class TestEndToEndWorkflow:
         sandbox_manifest = full_system["sandbox_manifest"]
         access_control = NamespaceAccessControl(sandbox_manifest)
 
-        search_results = query.search("hash", namespace="secure", max_depth=2)
+        search_results = query.search("hash", namespace="secure")
         assert len(search_results["results"]) >= 1
 
         allowed, _ = access_control.can_access("secure", "crypto")

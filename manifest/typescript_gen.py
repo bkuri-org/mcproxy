@@ -71,12 +71,10 @@ def generate_compact_instructions(
 
     # Get config values with defaults
     search_config = (config or {}).get("search", {})
-    min_words = search_config.get("min_words", 2)
     max_tools = search_config.get("max_tools", 5)
 
     # Format tool limit for display
     max_tools_display = "all" if max_tools <= 0 else f"top {max_tools}"
-    min_words_display = "any" if min_words <= 0 else f"{min_words}+"
 
     lines = [
         "MCProxy v5.0 - Single Tool API",
@@ -99,8 +97,6 @@ def generate_compact_instructions(
         "SEARCH - Find available servers and tools:",
         "  mcproxy(action='search', query='search terms')            # Find matching tools",
         "  mcproxy(action='search')                                  # List all servers",
-        "  mcproxy(action='search', query='...', max_depth=3)        # Include inputSchema + usage examples",
-        "  mcproxy(action='search', query='...', max_results=10)     # Control results per server",
         "",
         "INSPECT - Get tool parameter schemas:",
         "  mcproxy(action='inspect', server='server_name', tool='tool_name')   # Specific tool schema",

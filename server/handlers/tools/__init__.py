@@ -75,20 +75,7 @@ META_TOOLS: List[Dict[str, Any]] = [
                     "description": "Number of retries for failed tool calls (for action='execute', default: 0)",
                     "default": 0,
                 },
-                "max_depth": {
-                    "type": "integer",
-                    "description": "Maximum search depth (for action='search', default: 2)",
-                    "default": 2,
-                },
-                "max_results": {
-                    "type": "integer",
-                    "description": "Maximum results per server (for action='search', default: 5)",
-                    "default": 5,
-                },
-                "brief": {
-                    "type": "boolean",
-                    "description": "Return brief results (force max_depth=1, for action='search', default: false)",
-                },
+
                 "topic": {
                     "type": "string",
                     "description": "Help topic (for action='help', e.g., 'sandbox' for security restrictions)",

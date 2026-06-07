@@ -20,7 +20,7 @@ CACHE_TTL_SECONDS = 3600
 class QueryResultCache:
     """Simple in-memory cache for search query results with TTL.
 
-    Cache entries are keyed by a string combining (query, namespace, max_depth, max_tools).
+    Cache entries are keyed by a string combining (query, namespace).
     Expired entries are lazily evicted on read.
     """
 
@@ -49,26 +49,20 @@ class QueryResultCache:
         self,
         query: str,
         namespace: Optional[str],
-        max_depth: int,
-        max_tools: int,
     ) -> str:
         """Build a cache key from search parameters."""
-        return f"{query}|{namespace or ''}|{max_depth}|{max_tools}"
+        return f"{query}|{namespace or ''}"
 
     def get(
         self,
         query: str,
         namespace: Optional[str],
-        max_depth: int,
-        max_tools: int,
     ) -> Optional[Dict[str, Any]]:
         """Get cached search result if fresh.
 
         Args:
             query: Search query string
             namespace: Optional namespace filter
-            max_depth: Search depth level
-            max_tools: Max tools per server
 
         Returns:
             Cached result dict or None if miss/expired
@@ -76,7 +70,7 @@ class QueryResultCache:
         if self._ttl <= 0:
             return None
 
-        key = self._make_key(query, namespace, max_depth, max_tools)
+        key = self._make_key(query, namespace)
         entry = self._cache.get(key)
         if entry is None:
             return None
@@ -92,8 +86,6 @@ class QueryResultCache:
         self,
         query: str,
         namespace: Optional[str],
-        max_depth: int,
-        max_tools: int,
         data: Dict[str, Any],
     ) -> None:
         """Cache a search result.
@@ -101,14 +93,12 @@ class QueryResultCache:
         Args:
             query: Search query string
             namespace: Optional namespace filter
-            max_depth: Search depth level
-            max_tools: Max tools per server
             data: The result dict to cache
         """
         if self._ttl <= 0:
             return
 
-        key = self._make_key(query, namespace, max_depth, max_tools)
+        key = self._make_key(query, namespace)
         self._cache[key] = {"data": data, "ts": time.monotonic()}
 
     def clear(self) -> None:
