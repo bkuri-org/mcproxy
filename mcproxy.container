@@ -21,11 +21,9 @@ Volume=mcproxy-cache:/app/cache:Z
 # Environment
 Environment=PYTHONUNBUFFERED=1
 
-# Security hardening
+# Security hardening (Container-level)
 NoNewPrivileges=true
 SecurityLabelDisable=false
-ProtectHome=true
-ProtectSystem=strict
 PrivateTmp=true
 ReadOnlyRootfs=true
 CapDrop=ALL
@@ -44,6 +42,8 @@ Restart=always
 RestartSec=10
 TimeoutStartSec=120
 TimeoutStopSec=60
+ProtectHome=true
+ProtectSystem=strict
 
 [Install]
 WantedBy=multi-user.target
