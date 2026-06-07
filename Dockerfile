@@ -26,14 +26,15 @@ WORKDIR /app
 COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 
 # SHELL REMOVAL - Security hardening (v4.2)
-# Replace shells with stubs; keep python3.real for entrypoint/healthcheck
+# Use symlink approach (mv + ln) to avoid "text file busy" on running binaries
 RUN for shell in sh bash; do \
         if [ -f "/bin/$shell" ]; then \
-            cp "/bin/$shell" "/bin/${shell}.real" && \
-            echo '#!/bin/sh' > "/bin/$shell" && \
-            echo 'echo "Shell disabled for security"' >> "/bin/$shell" && \
-            echo 'exit 1' >> "/bin/$shell" && \
-            chmod +x "/bin/$shell"; \
+            echo '#!/bin/sh' > "/bin/${shell}.disabled" && \
+            echo 'echo "Shell disabled for security"' >> "/bin/${shell}.disabled" && \
+            echo 'exit 1' >> "/bin/${shell}.disabled" && \
+            chmod +x "/bin/${shell}.disabled" && \
+            mv "/bin/$shell" "/bin/${shell}.real" 2>/dev/null; \
+            ln -sf "/bin/${shell}.disabled" "/bin/$shell"; \
         fi; \
     done
 
