@@ -347,6 +347,10 @@
     "cache_ttl": 300,
     "list_brief_threshold": 300
   },
+  "security": {
+    "blocklist_enabled": true,
+    "allow_risky_servers": true
+  },
   "sandbox": {
     "timeout_secs": 900,
     "pool": {
