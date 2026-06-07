@@ -12,6 +12,8 @@ import json
 import time
 from typing import Any, Dict, List, Optional
 
+import re
+
 import requests
 
 from logging_config import get_logger
@@ -66,6 +68,18 @@ def _format_upstream_error(tool_name: str, error_details: dict) -> str:
         if parts:
             return "; ".join(parts)
 
+    # Check if data is a dict with validation_error wrapper (some upstreams)
+    if isinstance(data, dict):
+        parsed = _try_parse_dict_error(data)
+        if parsed:
+            return parsed
+
+    # Fallback: try parsing the message field for raw Pydantic multi-line format
+    # e.g. "1 validation error for ModelName\n  param_name\n    error_msg (type=error_type)"
+    parsed_message = _parse_pydantic_message(message)
+    if parsed_message:
+        return parsed_message
+
     # Non-Pydantic: use message as-is
     return message
 
@@ -109,6 +123,87 @@ def _format_pydantic_error(err: dict) -> str:
 
     # Fallback: use message as-is
     return msg if isinstance(msg, str) else str(msg)
+
+
+def _try_parse_dict_error(data: dict) -> Optional[str]:
+    """Try to extract validation errors from a dict-format data field.
+
+    Some upstream servers (e.g., Home Assistant MCP) return validation
+    errors wrapped in a dict like:
+        {"validation_error": [{"type": "missing", "loc": ["body", "x"], "msg": "field required"}]}
+
+    Args:
+        data: The 'data' dict from the JSON-RPC error response
+
+    Returns:
+        Formatted error string, or None if not parseable
+    """
+    # Look for common wrapper keys that contain a list of errors
+    for key in ("validation_error", "errors", "detail"):
+        value = data.get(key)
+        if isinstance(value, list):
+            parts = []
+            for err in value:
+                if isinstance(err, dict):
+                    parts.append(_format_pydantic_error(err))
+            if parts:
+                return "; ".join(parts)
+    return None
+
+
+def _parse_pydantic_message(message: str) -> Optional[str]:
+    """Parse raw Pydantic multi-line error format from the message field.
+
+    Some upstream servers serialize Pydantic errors as a string in the
+    message field instead of using the data field:
+        "1 validation error for ToggleRequest\n  entity_id\n    field required (type=value_error.missing)"
+
+    Args:
+        message: The raw message string
+
+    Returns:
+        Human-readable error string, or None if not a Pydantic message
+    """
+    if not isinstance(message, str):
+        return None
+
+    # Match Pydantic multi-line format:
+    # "N validation error(s) for ModelName\n  field_name\n    error_detail (type=error_type)"
+    if not re.match(r"^\d+ validation error", message):
+        return None
+
+    lines = message.split("\n")
+    parts = []
+    # Skip header line, then pair field_name/detail lines.
+    # Format: field_name (2-space indent) \n detail (4-space indent)
+    i = 1  # skip header
+    while i < len(lines) - 1:
+        field_name = lines[i].strip()
+        detail = lines[i + 1].strip()
+        i += 2
+
+        if not field_name or not detail:
+            continue
+
+        if field_name.startswith(("body", "query", "path")):
+            field_name = field_name.split(".")[-1]
+
+        # Extract Pydantic type from parentheses
+        type_match = re.search(r"\(type=([^)]+)\)", detail)
+        err_type = type_match.group(1) if type_match else ""
+
+        if "missing" in err_type or "field required" in detail.lower():
+            parts.append(f"Missing required parameter '{field_name}'")
+        elif err_type in ("extra_forbidden", "extra") or "extra" in detail.lower():
+            parts.append(f"Unknown parameter '{field_name}'")
+        else:
+            # Use the detail as-is
+            parts.append(f"Parameter '{field_name}': {detail}")
+
+    if parts:
+        return "; ".join(parts)
+    return None
+
 
 logger = get_logger(__name__)
 
