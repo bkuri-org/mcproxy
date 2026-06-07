@@ -5,7 +5,7 @@
 # requires shell access and a permissive environment.
 #
 # Build:
-#   docker build -f Dockerfile.adapter -t mcproxy-adapter:latest .
+#   docker build -f Dockerfile.adapter -t localhost/mcp-adapter:latest .
 
 FROM python:3.11-slim
 
@@ -13,25 +13,47 @@ WORKDIR /app
 
 # Install runtime deps
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
+    curl ca-certificates gnupg \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Node.js (needed for npx/node-based MCP servers)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    nodejs \
-    npm \
+# Install Node.js v22 from nodesource (for npx/node-based MCP servers)
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
-
-# Install pip dependencies (fastapi, uvicorn, etc.)
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
 
 # Install uv for uvx-based MCP servers
-RUN pip install --no-cache-dir uv
+RUN curl -fsSL https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.local/bin:${PATH}"
+
+# Install pip dependencies
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt \
+    && pip install --no-cache-dir uvicorn fastapi
+
+# Pre-cache existing npx packages (Phase 1 + Phase 2)
+RUN npx -y -p mcp-server-fear-greed -c true 2>&1 | tail -1
+RUN npx -y -p @anaisbetts/mcp-youtube -c true 2>&1 | tail -1
+RUN npx -y -p wikipedia-mcp -c true 2>&1 | tail -1
+RUN npx -y -p asset-price-mcp -c true 2>&1 | tail -1
+RUN npx -y -p puremd-mcp -c true 2>&1 | tail -1
+RUN npx -y -p @modelcontextprotocol/server-sequential-thinking -c true 2>&1 | tail -1
+RUN npx -y -p think-tool-mcp -c true 2>&1 | tail -1
+RUN npx -y -p @coinstats/coinstats-mcp -c true 2>&1 | tail -1
+RUN npx -y -p @coolver/home-assistant-mcp -c true 2>&1 | tail -1
+RUN npx -y -p @iflow-mcp/atom-of-thoughts -c true 2>&1 | tail -1
+RUN npx -y -p @executeautomation/tmux-mcp-server -c true 2>&1 | tail -1
+RUN npx -y -p @executeautomation/playwright-mcp-server -c true 2>&1 | tail -1
+RUN npx -y -p @pipeworx/mcp-coinmarketcap -c true 2>&1 | tail -1
+
+# Install uv tools
+RUN uv tool install mcpdoc 2>&1 | tail -2
+RUN uv tool install perplexity-mcp 2>&1 | tail -2
 
 # Copy adapter code
-COPY adapter.py .
-COPY logging_config.py .
+COPY adapter.py logging_config.py /app/
 
-# Default: show help
-CMD ["python", "adapter.py", "--help"]
+HEALTHCHECK --interval=15s --timeout=5s --retries=3 \
+    CMD curl -sf http://localhost:8080/health || exit 1
+
+ENTRYPOINT ["python", "/app/adapter.py"]
+CMD ["--port", "8080", "--host", "0.0.0.0", "--", "npx", "-y", "mcp-server-fear-greed"]
