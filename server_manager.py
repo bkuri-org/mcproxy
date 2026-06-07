@@ -9,6 +9,7 @@ from typing import Any, Callable, Dict, List, Optional
 from sandbox import suggest_tool_fix
 from logging_config import get_logger
 from http_backend import HTTPServerConnector
+from tool_aggregator import untransform_tool_name
 
 logger = get_logger(__name__)
 
@@ -114,8 +115,16 @@ class ServerManager:
                         f"Tool '{tool_name}' not found on server "
                         f"'{server_name}'. {suggestion}"
                     ) from e
+                # Include available tools from the server in the error
+                tool_list = ", ".join(available_tools[:10])
+                suffix = (
+                    f" and {len(available_tools) - 10} more"
+                    if len(available_tools) > 10
+                    else ""
+                )
                 raise RuntimeError(
-                    f"Tool '{tool_name}' not found on server '{server_name}'"
+                    f"Tool '{tool_name}' not found on server '{server_name}'. "
+                    f"Available tools: {tool_list}{suffix}"
                 ) from e
             raise
 

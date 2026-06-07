@@ -174,6 +174,23 @@ class HTTPServerConnector:
                     )
                 else:
                     raise RuntimeError(f"Failed to reconnect to '{self.name}'")
+            elif "401" in error_str or "Unauthorized" in error_str:
+                logger.warning(
+                    f"Authentication failure for '{self.name}', reconnecting to "
+                    f"trigger re-auth..."
+                )
+                await self.stop()
+                if await self.start():
+                    response = self._send_request(
+                        method="tools/call",
+                        params={"name": tool_name, "arguments": arguments},
+                        id=f"call_{tool_name}",
+                        timeout=timeout_seconds,
+                    )
+                else:
+                    raise RuntimeError(
+                        f"Failed to reconnect to '{self.name}' after 401"
+                    )
             else:
                 raise
 

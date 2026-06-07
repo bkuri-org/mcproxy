@@ -34,14 +34,7 @@ uv pip install -e ".[dev]"
 python main.py --log --config mcproxy.json
 ```
 
-### Docker
-
-```bash
-docker build -t localhost/mcproxy:latest .
-docker run -d -p 12010:12010 \
-  -v $(pwd)/config:/app/config:Z \
-  localhost/mcproxy:latest
-```
+> See [Deployment Options](#deployment-options) for bare-metal, Docker Compose, and Quadlet setups.
 
 ---
 
@@ -204,16 +197,134 @@ python main.py [OPTIONS]
 
 ---
 
-## Deployment
+## Deployment Options
+
+MCProxy supports three deployment modes depending on your stage:
+
+| Mode | Best For | Config Format | Server Config |
+|------|----------|--------------|---------------|
+| **Bare Metal** | Development & active syncing | `command`/`args` (stdio) | Root `mcproxy.json` |
+| **Docker Compose** | Full containerized stack | `url` (HTTP adapters) | `config/mcproxy.json` |
+| **Quadlet** | Single-gateway production | `url` (HTTP adapters) | `/srv/containers/mcproxy/config/mcproxy.json` |
+
+---
+
+### 🖥️  Bare Metal (Development)
+
+Runs the gateway directly alongside adapter processes. Best for rapid iteration and syncing between local and server.
 
 ```bash
-# Quadlet (Systemd)
-sudo cp mcproxy.container /etc/containers/systemd/
-sudo systemctl enable --now mcproxy.service
+# Terminal 1: gateway
+python main.py --log --port 12010 --config mcproxy.json
 
-# Auto-deploy (after initial setup)
-git push  # Hook handles rest
+# Terminal 2+: adapters (one per MCP server)
+python adapter.py --port 12020 --host 127.0.0.1 -- npx -y wikipedia-mcp
+python adapter.py --port 12021 --host 127.0.0.1 -- npx -y @modelcontextprotocol/server-sequential-thinking
+# ...
 ```
+
+The root `mcproxy.json` uses `command`/`args` (stdio format) so mcproxy spawns servers directly. When using the adapter-based architecture (bare metal with `adapter.py`), use a config with `url` fields pointing to the adapter ports — or let mcproxy spawn stdio servers directly.
+
+---
+
+### 🐳  Docker Compose (Full Stack)
+
+Runs the hardened gateway + all adapter backends as containers on a shared bridge network.
+
+```bash
+# Build both images
+sudo docker compose build mcproxy       # Hardened gateway (no shell/python)
+sudo docker compose build adapters       # Permissive adapters (has node, uv, python)
+
+# Or build everything at once
+sudo docker compose build
+
+# Launch
+sudo docker compose up -d
+
+# Check health
+curl http://localhost:12010/health
+```
+
+**How it works:**
+
+```
+                   ┌─────────────────────────────┐
+                   │      mcproxy (hardened)      │
+                   │  port 12010, no shell/python │
+                   └──────────┬──────────────────┘
+                              │ container names over mcproxy-net
+          ┌───────────────────┼───────────────────────┐
+          ▼                   ▼                       ▼
+   ┌──────────────┐   ┌──────────────┐      ┌──────────────┐
+   │ adapter-*    │   │ adapter-*    │  …   │ adapter-*    │
+   │ (permissive) │   │ (permissive) │      │ (permissive) │
+   │ npx, node,   │   │ uvx, python  │      │ …            │
+   │ uv           │   │              │      │              │
+   └──────────────┘   └──────────────┘      └──────────────┘
+```
+
+- The **gateway** (`docker-compose.yml` → `mcproxy` service) uses `Dockerfile` — hardened with shell/python disabled, `CapDrop=ALL`, read-only rootfs
+- **Adapters** (every `adapter-*` service) use `Dockerfile.adapter` — intentionally permissive with node, npm, uv, and python for spawning subprocesses
+- Communication is over `mcproxy-net` bridge by container name
+- The `config/mcproxy.json` uses `url` format: `"url": "http://adapter-wikipedia:12027/mcp"`
+
+**External services** (jesse at `http://host.docker.internal:12011/mcp`, not_human_search, zilliqa_insights) connect via their existing URLs.
+
+---
+
+### 📦  Quadlet (Gateway Only — Production)
+
+Systemd-managed single container for the gateway. Adapters managed separately (or connect to existing services).
+
+```bash
+# 1. Build the image
+sudo podman build -t localhost/mcproxy:latest .
+
+# 2. Create data directories
+sudo mkdir -p /srv/containers/mcproxy/{config,data,cache}
+
+# 3. Deploy config (url-based, pointing to adapter backends)
+sudo cp config/mcproxy.json /srv/containers/mcproxy/config/
+
+# 4. Deploy Quadlet
+sudo cp mcproxy.container /etc/containers/systemd/
+sudo systemctl daemon-reload
+sudo systemctl start mcproxy
+```
+
+**Before deploying, edit `mcproxy.container`:**
+
+| Placeholder | Replace With |
+|-------------|-------------|
+| `192.168.50.X` | Your server's host IP (e.g., `192.168.50.70` for server1) |
+| `10.90.0.20` | An available IP on the `lan-core` bridge subnet |
+
+**Key differences from Compose:**
+
+| Aspect | Compose | Quadlet |
+|--------|---------|--------|
+| Scope | Full stack (gateway + adapters) | Gateway only |
+| Network | `mcproxy-net` (auto-created) | `lan-core` (existing bridge) |
+| Port exposure | `0.0.0.0:12010` | `192.168.50.X:12010` (host-pinned) |
+| Restart | `unless-stopped` | `always` via systemd |
+| Adaptee mgmt | Compose handles lifecycle | Handled externally (systemd, scripts, etc.) |
+
+---
+
+### 🔁  Switching Modes
+
+The key difference between modes is the **config format**:
+
+```jsonc
+// Bare metal (stdio) — mcproxy spawns subprocesses directly
+{ "command": "/usr/bin/npx", "args": ["-y", "wikipedia-mcp"] }
+
+// Containerized (HTTP) — mcproxy connects to adapter containers
+{ "url": "http://adapter-wikipedia:12027/mcp" }
+```
+
+The root `mcproxy.json` is the bare-metal reference. The `config/mcproxy.json` is the containerized reference. Both produce the same namespace/group structure — only the server transport differs.
 
 ---
 

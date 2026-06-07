@@ -267,6 +267,8 @@ class HotReloadServerManager:
             "enabled",
             "tool_timeout",
             "tool_timeouts",
+            "strip_tool_prefix",
+            "tool_prefix",
         ]
         for field in fields:
             if old.get(field) != new.get(field):

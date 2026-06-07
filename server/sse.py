@@ -55,16 +55,22 @@ def get_session_id_from_request(request: Request) -> Optional[str]:
 
 
 def resolve_default_namespace(capability_registry: Optional[Any]) -> str:
-    """Get the default namespace name.
+    """Get the default namespace/group name.
+
+    Checks groups first (preferred), then namespaces. This allows /sse
+    (bare endpoint) to resolve to the "default" group.
 
     Args:
         capability_registry: Capability registry instance
 
     Returns:
-        Default namespace name (empty string if no default set)
+        Default namespace/group name (empty string if no default set)
     """
     if capability_registry is None:
         return ""
+    groups = capability_registry._groups
+    if "default" in groups:
+        return "default"
     namespaces = capability_registry._namespaces
     if "default" in namespaces:
         return "default"
@@ -234,8 +240,17 @@ def register_sse_endpoints(
 
     @app.post("/sse")
     async def handle_sse_message(request: Request) -> Dict[str, Any]:
-        """Handle MCP POST messages at /sse (for OpenCode compatibility)."""
+        """Handle MCP POST messages at /sse (for OpenCode compatibility).
+
+        Resolves the default group/namespace if no X-Namespace header is provided.
+        """
         check_auth(request)
+        header_ns = get_namespace_from_request(request)
+        if not header_ns:
+            capability_registry = capability_registry_getter()
+            default_ns = resolve_default_namespace(capability_registry)
+            if default_ns:
+                return await handle_message(request, path_namespace=default_ns)
         return await handle_message(request)
 
     @app.post("/sse/{namespace}")

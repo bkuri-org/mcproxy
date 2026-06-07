@@ -278,6 +278,222 @@ def cmd_migrate(args: argparse.Namespace) -> None:
         print(f"  {cmd}")
 
 
+def cmd_test(args: argparse.Namespace) -> None:
+    """Test a backend server's connectivity and tool response."""
+    import requests
+
+    config = load_config()
+    server_name = args.name
+
+    # Find the server
+    server_config = None
+    for s in config.get("servers", []):
+        if s["name"] == server_name:
+            server_config = s
+            break
+
+    if not server_config:
+        print(f"Error: server '{server_name}' not found in config", file=sys.stderr)
+        servers = [s["name"] for s in config.get("servers", [])]
+        print(f"Available servers: {', '.join(servers)}", file=sys.stderr)
+        sys.exit(1)
+
+    url = server_config.get("url")
+    if not url:
+        print(
+            f"Error: server '{server_name}' has no URL (stdio server)",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    action = args.action or "tools/list"
+    timeout = args.timeout or server_config.get("timeout", 60)
+
+    print(f"Testing server '{server_name}' at {url}")
+    print(f"Action: {action} | Timeout: {timeout}s")
+    print("-" * 50)
+
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream, application/json",
+    }
+    custom_headers = server_config.get("headers", {})
+    headers.update(custom_headers)
+
+    # Step 1: Initialize
+    print("\n[1] Initialize...")
+    init_payload = {
+        "jsonrpc": "2.0",
+        "id": "init",
+        "method": "initialize",
+        "params": {
+            "protocolVersion": "2024-11-05",
+            "capabilities": {},
+            "clientInfo": {"name": "mcproxy-test", "version": "1.0.0"},
+        },
+    }
+    session_id = None
+
+    try:
+        resp = requests.post(url, json=init_payload, headers=headers, timeout=timeout)
+        session_id = resp.headers.get("mcp-session-id")
+        resp.raise_for_status()
+
+        ct = resp.headers.get("content-type", "")
+        init_result = None
+        if "application/json" in ct:
+            init_result = resp.json()
+        else:
+            for line in resp.iter_lines():
+                if line and line.decode().strip().startswith("data:"):
+                    import json as json_mod
+
+                    init_result = json_mod.loads(line.decode().strip()[5:].strip())
+                    break
+
+        if not init_result:
+            print("  ❌ No response")
+            sys.exit(1)
+        if "error" in init_result:
+            print(f"  ❌ Error: {init_result['error']}")
+            sys.exit(1)
+
+        server_info = init_result.get("result", {}).get("serverInfo", {})
+        print(f"  ✅ Connected: {server_info.get('name', '?')} v{server_info.get('version', '?')}")
+
+    except Exception as e:
+        print(f"  ❌ Connection failed: {e}")
+        sys.exit(1)
+
+    # Step 2: Perform action
+    print(f"\n[2] {action}...")
+    action_headers = dict(headers)
+    if session_id:
+        action_headers["mcp-session-id"] = session_id
+
+    action_payload = {"jsonrpc": "2.0", "id": "action", "method": action, "params": {}}
+
+    try:
+        resp = requests.post(
+            url, json=action_payload, headers=action_headers, timeout=timeout
+        )
+        ct = resp.headers.get("content-type", "")
+        action_result = None
+        if "application/json" in ct:
+            action_result = resp.json()
+        else:
+            for line in resp.iter_lines():
+                if line and line.decode().strip().startswith("data:"):
+                    import json as json_mod
+
+                    action_result = json_mod.loads(line.decode().strip()[5:].strip())
+                    break
+
+        if not action_result:
+            print("  ❌ No response")
+            sys.exit(1)
+        if "error" in action_result:
+            print(f"  ❌ Error: {action_result['error']}")
+            sys.exit(1)
+
+        if action == "tools/list":
+            tools = action_result.get("result", {}).get("tools", [])
+            print(f"  ✅ {len(tools)} tools discovered:")
+            for tool in tools:
+                desc = (tool.get("description") or "").split("\n")[0][:60]
+                print(f"     - {tool['name']}: {desc}")
+        else:
+            print(f"  ✅ Result:")
+            print(json.dumps(action_result.get("result", {}), indent=2)[:500])
+
+    except Exception as e:
+        print(f"  ❌ Failed: {e}")
+        sys.exit(1)
+
+    print(f"\n{'=' * 50}")
+    print("All checks passed ✅")
+
+
+def cmd_validate(args: argparse.Namespace) -> None:
+    """Validate connectivity to all enabled HTTP backends."""
+    import requests
+
+    config = load_config()
+    servers = [s for s in config.get("servers", []) if s.get("enabled", True)]
+
+    http_servers = [s for s in servers if "url" in s]
+    stdio_servers = [s for s in servers if "command" in s]
+
+    print(f"Validating {len(http_servers)} HTTP backends...")
+    if stdio_servers:
+        print(
+            f"(Skipping {len(stdio_servers)} stdio servers: "
+            f"{', '.join(s['name'] for s in stdio_servers)})"
+        )
+    print("-" * 50)
+
+    failures = []
+    for server in http_servers:
+        name = server["name"]
+        url = server["url"]
+        timeout = server.get("timeout", 60)
+
+        try:
+            hdrs = {
+                "Content-Type": "application/json",
+                "Accept": "text/event-stream, application/json",
+            }
+            hdrs.update(server.get("headers", {}))
+
+            payload = {
+                "jsonrpc": "2.0",
+                "id": "health",
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": {},
+                    "clientInfo": {
+                        "name": "mcproxy-validate",
+                        "version": "1.0.0",
+                    },
+                },
+            }
+
+            resp = requests.post(url, json=payload, headers=hdrs, timeout=timeout)
+            ct = resp.headers.get("content-type", "")
+            result = None
+            if "application/json" in ct:
+                result = resp.json()
+            else:
+                for line in resp.iter_lines():
+                    if line and line.decode().strip().startswith("data:"):
+                        import json as json_mod
+
+                        result = json_mod.loads(line.decode().strip()[5:].strip())
+                        break
+
+            if result and "error" not in result:
+                server_info = result.get("result", {}).get("serverInfo", {})
+                sname = server_info.get("name", "?")
+                ver = server_info.get("version", "?")
+                print(f"  ✅ {name:<25} {url:<45} ({sname} v{ver})")
+            else:
+                err = (result or {}).get("error", "no response")
+                print(f"  ❌ {name:<25} {url:<45} error: {err}")
+                failures.append(name)
+
+        except Exception as e:
+            print(f"  ❌ {name:<25} {url:<45} {type(e).__name__}: {e}")
+            failures.append(name)
+
+    print("-" * 50)
+    if failures:
+        print(f"❌ {len(failures)} server(s) failed: {', '.join(failures)}")
+        sys.exit(1)
+    else:
+        print(f"✅ All {len(http_servers)} backends healthy")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="mcproxy",
@@ -332,6 +548,26 @@ def main() -> None:
         p.add_argument("name", help="Server name")
         p.add_argument("--user", action="store_true", help="User service")
         p.set_defaults(func=lambda a, act=action: cmd_service(act, a.name, a.user))
+
+    p_test = subparsers.add_parser("test", help="Test a backend server's connectivity")
+    p_test.add_argument("name", help="Server name to test")
+    p_test.add_argument(
+        "--action",
+        default="tools/list",
+        help="MCP action to perform (default: tools/list)",
+    )
+    p_test.add_argument(
+        "--timeout",
+        type=int,
+        default=None,
+        help="Request timeout in seconds (default: from config)",
+    )
+    p_test.set_defaults(func=cmd_test)
+
+    p_validate = subparsers.add_parser(
+        "validate", help="Validate connectivity to all HTTP backends"
+    )
+    p_validate.set_defaults(func=cmd_validate)
 
     args = parser.parse_args()
     args.func(args)

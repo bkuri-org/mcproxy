@@ -1,0 +1,37 @@
+# MCProxy Adapter — stdio-to-HTTP bridge
+#
+# This is intentionally *not* hardened — the adapter needs to
+# spawn arbitrary subprocesses (npx, uvx, node, python) which
+# requires shell access and a permissive environment.
+#
+# Build:
+#   docker build -f Dockerfile.adapter -t mcproxy-adapter:latest .
+
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install runtime deps
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Node.js (needed for npx/node-based MCP servers)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    nodejs \
+    npm \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install pip dependencies (fastapi, uvicorn, etc.)
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Install uv for uvx-based MCP servers
+RUN pip install --no-cache-dir uv
+
+# Copy adapter code
+COPY adapter.py .
+COPY logging_config.py .
+
+# Default: show help
+CMD ["python", "adapter.py", "--help"]

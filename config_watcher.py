@@ -94,6 +94,9 @@ def validate_schema(config: Dict[str, Any]) -> None:
     if "sandbox" in config:
         validate_sandbox(config["sandbox"])
 
+    if "reasoning" in config:
+        validate_reasoning(config["reasoning"])
+
     if "auth" in config:
         validate_auth(config.get("auth", {}))
 
@@ -193,6 +196,12 @@ def validate_config_with_result(
     if "sandbox" in config:
         try:
             validate_sandbox(config["sandbox"])
+        except ConfigError as e:
+            errors.append(str(e))
+
+    if "reasoning" in config:
+        try:
+            validate_reasoning(config["reasoning"])
         except ConfigError as e:
             errors.append(str(e))
 
@@ -434,6 +443,84 @@ def validate_server(server: Dict[str, Any], index: int) -> None:
 
     if "headers" in server and not isinstance(server["headers"], dict):
         raise ConfigError(f"Server {index} 'headers' must be an object")
+
+    if "strip_tool_prefix" in server:
+        if not isinstance(server["strip_tool_prefix"], str):
+            raise ConfigError(f"Server {index} 'strip_tool_prefix' must be a string")
+        if not server["strip_tool_prefix"]:
+            raise ConfigError(
+                f"Server {index} 'strip_tool_prefix' must be a non-empty string"
+            )
+
+    if "tool_prefix" in server:
+        if not isinstance(server["tool_prefix"], str):
+            raise ConfigError(f"Server {index} 'tool_prefix' must be a string")
+
+    # Warn if env is set on an HTTP server (only affects adapter process level)
+    if server_type == "http" and "env" in server:
+        logger.warning(
+            f"Server {index} ({server['name']}): 'env' field on HTTP server has no "
+            f"effect — environment variables only propagate to stdio adapters. "
+            f"Use 'headers' for HTTP authentication or set env vars in the adapter "
+            f"systemd unit directly."
+        )
+
+
+def validate_reasoning(reasoning: Dict[str, Any]) -> None:
+    """Validate reasoning engine configuration.
+
+    Args:
+        reasoning: Reasoning configuration dict
+
+    Raises:
+        ConfigError: If reasoning config is invalid
+    """
+    if not isinstance(reasoning, dict):
+        raise ConfigError("'reasoning' must be an object")
+
+    if "default" in reasoning:
+        default = reasoning["default"]
+        if not isinstance(default, str):
+            raise ConfigError("reasoning.default must be a string")
+
+    if "engines" in reasoning:
+        engines = reasoning["engines"]
+        if not isinstance(engines, dict):
+            raise ConfigError("reasoning.engines must be an object")
+        for name, engine_cfg in engines.items():
+            if not isinstance(engine_cfg, dict):
+                raise ConfigError(
+                    f"reasoning.engines.{name} must be an object"
+                )
+            if "server" not in engine_cfg:
+                raise ConfigError(
+                    f"reasoning.engines.{name} missing required 'server' field"
+                )
+            if not isinstance(engine_cfg["server"], str):
+                raise ConfigError(
+                    f"reasoning.engines.{name}.server must be a string"
+                )
+
+    if "auto_think" in reasoning:
+        auto = reasoning["auto_think"]
+        if not isinstance(auto, dict):
+            raise ConfigError("reasoning.auto_think must be an object")
+        if "enabled" in auto and not isinstance(auto["enabled"], bool):
+            raise ConfigError("reasoning.auto_think.enabled must be a boolean")
+        if "keywords" in auto:
+            if not isinstance(auto["keywords"], list):
+                raise ConfigError("reasoning.auto_think.keywords must be an array")
+            for kw in auto["keywords"]:
+                if not isinstance(kw, str):
+                    raise ConfigError(
+                        "reasoning.auto_think.keywords entries must be strings"
+                    )
+        if "complexity_threshold" in auto:
+            threshold = auto["complexity_threshold"]
+            if not isinstance(threshold, int) or threshold < 1:
+                raise ConfigError(
+                    "reasoning.auto_think.complexity_threshold must be >= 1"
+                )
 
 
 def validate_namespace_servers(

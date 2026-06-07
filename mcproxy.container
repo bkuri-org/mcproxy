@@ -7,14 +7,34 @@ Wants=network-online.target
 [Container]
 Image=localhost/mcproxy:latest
 ContainerName=mcproxy
+
 # Phase 1: host networking so container can reach bare-metal MCP servers on localhost
 # Phase 3 (mcproxy-io1.3): switch to bridge + shared Podman network
 Network=host
-Environment=PYTHONUNBUFFERED=1
+
+# Mount config (read-only), .env (read-only), data + cache (read-write)
 Volume=/srv/containers/mcproxy/config:/app/config:ro,Z
 Volume=/srv/containers/mcproxy/.env:/app/.env:ro,Z
 Volume=mcproxy-data:/app/data:Z
 Volume=mcproxy-cache:/app/cache:Z
+
+# Environment
+Environment=PYTHONUNBUFFERED=1
+
+# Security hardening
+NoNewPrivileges=true
+SecurityLabelDisable=false
+ProtectHome=true
+ProtectSystem=strict
+PrivateTmp=true
+ReadOnlyRootfs=true
+CapDrop=ALL
+
+# Resource limits
+Memory=512M
+MemorySwap=512M
+
+# Labels
 Label=app=mcproxy
 Label=service=mcp
 Label=phase=1-host-network

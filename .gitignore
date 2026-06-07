@@ -58,6 +58,7 @@ mcproxy.json.bak
 
 # Runtime cache
 cache/
+data/
 
 # Beads / Dolt files (added by bd init)
 .dolt/
