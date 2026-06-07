@@ -25,7 +25,7 @@ Environment=PYTHONUNBUFFERED=1
 NoNewPrivileges=true
 SecurityLabelDisable=false
 ReadOnly=true
-CapDrop=ALL
+DropCapability=ALL
 
 # Resource limits
 Memory=512M
