@@ -7,11 +7,111 @@ import asyncio
 from typing import Any, Callable, Dict, List, Optional
 
 from sandbox import suggest_tool_fix
+from utils.fuzzy_match import suggest_best_match
 from logging_config import get_logger
 from http_backend import HTTPServerConnector
 from tool_aggregator import untransform_tool_name
 
 logger = get_logger(__name__)
+
+
+# Patterns that indicate parameter validation errors from upstream
+_PARAM_ERROR_PATTERNS = (
+    "missing required parameter",
+    "unknown parameter",
+    "field required",
+    "extra forbidden",
+    "extra inputs not permitted",
+    "unexpected keyword argument",
+)
+
+
+def _get_tool_schema(
+    server_name: str, tool_name: str, tools: List[Dict[str, Any]]
+) -> Optional[Dict[str, Any]]:
+    """Look up a tool's inputSchema from the server's tool list.
+
+    Args:
+        server_name: Server name (for logging)
+        tool_name: Tool name to look up
+        tools: List of tool dicts from the server
+
+    Returns:
+        The tool's inputSchema dict, or None if not found
+    """
+    for tool in tools:
+        if tool.get("name") == tool_name:
+            return tool.get("inputSchema")
+    return None
+
+
+def _enrich_param_error(
+    tool_name: str, server_name: str, error_msg: str, tools: List[Dict[str, Any]]
+) -> str:
+    """Enrich a parameter error with available params and fuzzy suggestions.
+
+    Detects parameter name typos and suggests corrections using
+    fuzzy matching against the tool's inputSchema.
+
+    Args:
+        tool_name: Name of the tool that was called
+        server_name: Name of the server
+        error_msg: The original error message
+        tools: List of tool dicts from the server
+
+    Returns:
+        Enriched error message with available params and suggestions
+    """
+    # Check if this is a parameter error
+    error_lower = error_msg.lower()
+    if not any(pat in error_lower for pat in _PARAM_ERROR_PATTERNS):
+        return error_msg
+
+    schema = _get_tool_schema(server_name, tool_name, tools)
+    if not schema:
+        return error_msg
+
+    properties = schema.get("properties", {})
+    required = set(schema.get("required", []))
+    available_params = list(properties.keys())
+
+    if not available_params:
+        return error_msg
+
+    # Extract the bad parameter name from error message
+    import re
+
+    bad_param = None
+    for pattern in [r"parameter '([^']+)'", r'parameter "([^"]+)"']:
+        match = re.search(pattern, error_msg, re.IGNORECASE)
+        if match:
+            bad_param = match.group(1)
+            break
+
+    # Build enrichment message
+    parts = [error_msg]
+
+    if bad_param:
+        # Fuzzy match the bad param against available params
+        suggestion = suggest_best_match(
+            bad_param, available_params, threshold=0.5, max_suggestions=3
+        )
+        if suggestion and "Did you mean" in suggestion:
+            parts.append(suggestion)
+    else:
+        parts.append(f"Did you mean one of: {', '.join(repr(p) for p in available_params[:5])}?")
+
+    # Append available params for missing params
+    if required:
+        req_display = ", ".join(repr(p) for p in sorted(required)[:5])
+        suffix = f" ({len(required) - 5} more)" if len(required) > 5 else ""
+        parts.append(f"Required parameters: {req_display}{suffix}")
+    else:
+        avail_display = ", ".join(repr(p) for p in sorted(available_params)[:5])
+        suffix = f" ({len(available_params) - 5} more)" if len(available_params) > 5 else ""
+        parts.append(f"Available parameters: {avail_display}{suffix}")
+
+    return ". ".join(parts)
 
 
 class ServerManager:
@@ -127,6 +227,14 @@ class ServerManager:
                     f"Tool '{tool_name}' not found on server '{server_name}'. "
                     f"Available tools: {tool_list}{suffix}"
                 ) from e
+
+            # Enrich parameter validation errors with schema info + fuzzy suggestions
+            enriched = _enrich_param_error(
+                tool_name, server_name, error_msg, server.tools
+            )
+            if enriched != error_msg:
+                raise RuntimeError(enriched) from e
+
             raise
 
     async def update_config(self, new_config: Dict[str, Any]) -> None:
