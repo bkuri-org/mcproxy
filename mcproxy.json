@@ -348,8 +348,7 @@
     "list_brief_threshold": 300
   },
   "security": {
-    "blocklist_enabled": true,
-    "allow_risky_servers": true
+    "blocklist_enabled": false
   },
   "sandbox": {
     "timeout_secs": 900,
