@@ -57,6 +57,7 @@ class ServerManager:
                 name=server_config["name"],
                 url=server_config["url"],
                 timeout=server_config.get("timeout", 60),
+                connect_timeout=server_config.get("connect_timeout", 5),
                 tool_timeout=server_config.get("tool_timeout"),
                 tool_timeouts=server_config.get("tool_timeouts"),
                 headers=server_config.get("headers"),

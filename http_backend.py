@@ -29,6 +29,7 @@ class HTTPServerConnector:
         name: str,
         url: str,
         timeout: int = 60,
+        connect_timeout: int = 5,
         tool_timeout: Optional[int] = None,
         tool_timeouts: Optional[Dict[str, int]] = None,
         headers: Optional[Dict[str, str]] = None,
@@ -36,6 +37,7 @@ class HTTPServerConnector:
         self.name = name
         self.url = url.rstrip("/")
         self.timeout = timeout
+        self.connect_timeout = connect_timeout
         self.tool_timeout = tool_timeout or LONG_RUNNING_TOOL_TIMEOUT_SECS
         self.tool_timeouts = tool_timeouts or {}
         self.headers = headers or {
@@ -244,7 +246,7 @@ class HTTPServerConnector:
                 json=payload,
                 headers=headers,
                 stream=True,
-                timeout=timeout or self.timeout,
+                timeout=(self.connect_timeout, timeout or self.timeout),
             )
 
             new_session_id = response.headers.get("mcp-session-id")

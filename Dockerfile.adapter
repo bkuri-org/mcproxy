@@ -45,6 +45,22 @@ RUN npx -y -p @executeautomation/tmux-mcp-server -c true 2>&1 | tail -1
 RUN npx -y -p @executeautomation/playwright-mcp-server -c true 2>&1 | tail -1
 RUN npx -y -p @pipeworx/mcp-coinmarketcap -c true 2>&1 | tail -1
 
+# Create stable symlinks for npx-cached packages (npx hashes change per build)
+RUN set -e; \
+    for pkg in "@coolver/home-assistant-mcp" "@iflow-mcp/atom-of-thoughts"; do \
+        slug=$(echo "$pkg" | sed "s|@||;s|/|-|g"); \
+        target_file=""; \
+        for f in $(ls -d /root/.npm/_npx/*/node_modules/$pkg/build/index.js 2>/dev/null); do \
+            target_file="$f"; break; \
+        done; \
+        if [ -n "$target_file" ]; then \
+            ln -sf "$target_file" "/usr/local/bin/mcp-$slug"; \
+            echo "Linked: mcp-$slug"; \
+        else \
+            echo "WARNING: $pkg not found in npx cache"; \
+        fi; \
+    done
+
 # Install uv tools
 RUN uv tool install mcpdoc 2>&1 | tail -2
 RUN uv tool install perplexity-mcp 2>&1 | tail -2

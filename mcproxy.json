@@ -4,7 +4,7 @@
     {"name": "sequential_thinking", "type": "http", "url": "http://mcp-sequential-thinking:8080/mcp", "timeout": 120, "enabled": true},
     {"name": "atom_of_thoughts", "type": "http", "url": "http://mcp-atom-of-thoughts:8080/mcp", "timeout": 120, "enabled": true},
     {"name": "think_tool", "type": "http", "url": "http://mcp-think-tool:8080/mcp", "timeout": 120, "enabled": true},
-    {"name": "coinstats", "type": "http", "url": "http://mcp-coinstats:8080/mcp", "env": {"COINSTATS_API_KEY": "${COINSTATS_API_KEY}"}, "timeout": 120, "enabled": true},
+    {"name": "coinstats", "type": "http", "url": "http://mcp-coinstats:8080/mcp", "timeout": 120, "enabled": true},
     {"name": "llms_txt", "type": "http", "url": "http://mcp-llms-txt:8080/mcp", "timeout": 120, "enabled": true},
     {"name": "youtube", "type": "http", "url": "http://mcp-youtube:8080/mcp", "timeout": 120, "enabled": true},
     {"name": "wikipedia", "type": "http", "url": "http://mcp-wikipedia:8080/mcp", "timeout": 120, "enabled": true},
@@ -13,12 +13,14 @@
     {"name": "playwright", "type": "http", "url": "http://mcp-playwright:8080/mcp", "timeout": 120, "enabled": true},
     {"name": "perplexity_sonar", "type": "http", "url": "http://mcp-perplexity-sonar:8080/mcp", "timeout": 120, "enabled": true},
     {"name": "jesse", "type": "http", "url": "http://10.89.1.1:12011/mcp", "timeout": 120, "enabled": true},
-    {"name": "home_assistant", "type": "http", "url": "http://mcp-home-assistant:8080/mcp", "timeout": 120, "enabled": true}
+    {"name": "home_assistant", "type": "http", "url": "http://mcp-home-assistant:8080/mcp", "timeout": 120, "enabled": true},
+    {"name": "zilliqa_insights", "type": "http", "url": "https://insights.mcp.zilliqa.com/mcp", "timeout": 30, "connect_timeout": 5, "enabled": true},
+    {"name": "coinmarketcap", "type": "http", "url": "https://gateway.pipeworx.io/coinmarketcap/mcp", "timeout": 30, "connect_timeout": 5, "enabled": true}
   ],
   "blocklist_enabled": false,
   "namespaces": {
     "thinking": {"servers": ["sequential_thinking", "atom_of_thoughts", "think_tool"], "isolated": false},
-    "financial": {"servers": ["asset_price", "coinstats", "fear_greed_index"], "isolated": false},
+    "financial": {"servers": ["asset_price", "coinstats", "fear_greed_index", "zilliqa_insights", "coinmarketcap"], "isolated": false},
     "web": {"servers": ["wikipedia", "pure_md", "youtube"], "isolated": false},
     "docs": {"servers": ["llms_txt"], "isolated": false},
     "browser": {"servers": ["playwright", "perplexity_sonar"], "isolated": true},
