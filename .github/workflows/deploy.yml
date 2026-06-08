@@ -37,15 +37,9 @@ jobs:
             for d in issues:
                 if d.get('status') != 'closed':
                     continue
-                meta = d.get('metadata', {})
-                if isinstance(meta, str):
-                    try:
-                        meta = json.loads(meta)
-                    except:
-                        continue
-                bump = meta.get('bump', '')
-                if bump in ('patch', 'minor', 'major'):
-                    bumps.append(bump)
+                for label in d.get('labels', []):
+                    if label.startswith('bump:') and label.split(':', 1)[1] in ('patch', 'minor', 'major'):
+                        bumps.append(label.split(':', 1)[1])
             if not bumps:
                 print('none')
             elif 'major' in bumps:
