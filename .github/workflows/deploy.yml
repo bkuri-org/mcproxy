@@ -22,7 +22,14 @@ jobs:
         env:
           PYTHON_SCRIPT: |
             import sys, json
-            # Read all issues, find closed ones with bump metadata since the tag
+            from datetime import datetime
+            TAG_DATE_STR = sys.argv[1] if len(sys.argv) > 1 else ""
+            TAG_DATE = None
+            if TAG_DATE_STR:
+                try:
+                    TAG_DATE = datetime.fromisoformat(TAG_DATE_STR.split('+')[0].strip())
+                except:
+                    pass
             issues = []
             for line in sys.stdin:
                 line = line.strip()
@@ -32,11 +39,20 @@ jobs:
                     issues.append(json.loads(line))
                 except:
                     pass
-            # Output: max bump level
+            # Only count issues closed after the tag date
             bumps = []
             for d in issues:
                 if d.get('status') != 'closed':
                     continue
+                if TAG_DATE:
+                    closed = d.get('closed_at', '')
+                    if closed:
+                        try:
+                            closed_dt = datetime.fromisoformat(closed.replace('Z', '+00:00').split('+')[0].strip())
+                            if closed_dt <= TAG_DATE:
+                                continue
+                        except:
+                            continue
                 for label in d.get('labels', []):
                     if label.startswith('bump:') and label.split(':', 1)[1] in ('patch', 'minor', 'major'):
                         bumps.append(label.split(':', 1)[1])
@@ -66,10 +82,14 @@ jobs:
 
           echo "Last tag: $LAST_TAG"
 
-          # Read bump levels from beads metadata
+          # Get tag date for filtering
+          TAG_DATE=$(git log -1 --format="%ci" "$LAST_TAG" 2>/dev/null)
+          echo "Tag date: $TAG_DATE"
+
+          # Read bump levels from beads labels
           BEADS_BUMP="none"
           if [ -f .beads/issues.jsonl ]; then
-            BEADS_BUMP=$(python3 -c "${PYTHON_SCRIPT}" < .beads/issues.jsonl)
+            BEADS_BUMP=$(python3 -c "${PYTHON_SCRIPT}" "$TAG_DATE" < .beads/issues.jsonl)
           fi
           echo "Beads bump: ${BEADS_BUMP}"
 
@@ -101,6 +121,7 @@ jobs:
           echo "Final bump level: ${MAX_BUMP}"
 
       - name: Bump version
+        id: version-bump
         if: steps.bump.outputs.level != 'none' && steps.bump.outputs.level != ''
         run: |
           LEVEL="${{ steps.bump.outputs.level }}"
@@ -135,12 +156,12 @@ jobs:
           git tag "v${NEW}"
           git push origin main --tags
 
-          echo "version=${NEW}" >> "$GITHUB_ENV"
+          echo "version=${NEW}" >> "$GITHUB_OUTPUT"
 
       - name: Trigger deploy via ntfy
         if: steps.bump.outputs.level != 'none' && steps.bump.outputs.level != ''
         run: |
-          VERSION="${VERSION:-unknown}"
+          VERSION="${{ steps.version-bump.outputs.version || 'unknown' }}"
           SHORT_SHA="${GITHUB_SHA:0:7}"
           LEVEL="${{ steps.bump.outputs.level }}"
 
@@ -154,7 +175,7 @@ jobs:
       - name: Notify
         if: steps.bump.outputs.level != 'none' && steps.bump.outputs.level != ''
         run: |
-          VERSION="${VERSION:-unknown}"
+          VERSION="${{ steps.version-bump.outputs.version || 'unknown' }}"
           LEVEL="${{ steps.bump.outputs.level }}"
           SHORT_SHA="${GITHUB_SHA:0:7}"
 
