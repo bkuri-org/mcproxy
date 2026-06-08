@@ -17,23 +17,103 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Check for bump label
+      - name: Determine bump level from beads
         id: bump
         run: |
-          MSG="${{ github.event.head_commit.message }}"
-          if echo "$MSG" | grep -qE "bump:major"; then
-            echo "level=major" >> "$GITHUB_OUTPUT"
-          elif echo "$MSG" | grep -qE "bump:minor"; then
-            echo "level=minor" >> "$GITHUB_OUTPUT"
-          elif echo "$MSG" | grep -qE "bump:patch"; then
-            echo "level=patch" >> "$GITHUB_OUTPUT"
-          else
+          # Find closed issues since the last tag with bump metadata
+          LAST_TAG=$(git tag -l 'v*' --sort=-v:refname | head -1)
+
+          if [ -z "$LAST_TAG" ]; then
+            echo "No version tags found, skipping"
             echo "level=none" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
-          echo "message=$MSG" >> "$GITHUB_OUTPUT"
+
+          echo "Last tag: $LAST_TAG"
+
+          # Collect commits since last tag
+          COMMITS=$(git log "${LAST_TAG}..HEAD" --pretty=format:"%H" 2>/dev/null)
+
+          if [ -z "$COMMITS" ]; then
+            echo "No commits since last tag"
+            echo "level=none" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Read beads issues and find closed ones since the tag
+          MAX_BUMP="none"
+          CLOSED_ISSUES=""
+
+          if [ -f .beads/issues.jsonl ]; then
+            while IFS= read -r line; do
+              # Parse closed_at and metadata.bump
+              CLOSED_AT=$(echo "$line" | python3 -c "
+import sys, json
+try:
+    d = json.loads(sys.stdin.read())
+    print(d.get('closed_at', ''))
+except: print('')
+" 2>/dev/null)
+
+              BUMP=$(echo "$line" | python3 -c "
+import sys, json
+try:
+    d = json.loads(sys.stdin.read())
+    meta = d.get('metadata', {})
+    if isinstance(meta, str):
+        meta = json.loads(meta)
+    print(meta.get('bump', ''))
+except: print('')
+" 2>/dev/null)
+
+              if [ -n "$CLOSED_AT" ] && [ -n "$BUMP" ]; then
+                # Convert closed_at to unix timestamp for comparison
+                CLOSED_TS=$(date -d "$CLOSED_AT" +%s 2>/dev/null || echo 0)
+                TAG_TS=$(git log -1 --format=%ct "$LAST_TAG" 2>/dev/null || echo 0)
+
+                if [ "$CLOSED_TS" -gt "$TAG_TS" ] 2>/dev/null; then
+                  ISSUE_ID=$(echo "$line" | python3 -c "
+import sys, json
+try:
+    d = json.loads(sys.stdin.read())
+    print(d.get('id', ''))
+except: print('')
+" 2>/dev/null)
+
+                  CLOSED_ISSUES="${CLOSED_ISSUES} ${ISSUE_ID}(${BUMP})"
+
+                  # Determine highest bump level: major > minor > patch
+                  case "$MAX_BUMP" in
+                    none)   MAX_BUMP="$BUMP" ;;
+                    patch)  if [ "$BUMP" = "minor" ] || [ "$BUMP" = "major" ]; then MAX_BUMP="$BUMP"; fi ;;
+                    minor)  if [ "$BUMP" = "major" ]; then MAX_BUMP="$BUMP"; fi ;;
+                  esac
+                fi
+              fi
+            done < .beads/issues.jsonl
+          fi
+
+          # Also check commit messages for direct bump labels (fallback)
+          for commit in $COMMITS; do
+            MSG=$(git log -1 --format="%B" "$commit" 2>/dev/null)
+            for label in bump:major bump:minor bump:patch; do
+              if echo "$MSG" | grep -qE "$label"; then
+                LVL="${label#bump:}"
+                case "$MAX_BUMP" in
+                  none)   MAX_BUMP="$LVL" ;;
+                  patch)  if [ "$LVL" = "minor" ] || [ "$LVL" = "major" ]; then MAX_BUMP="$LVL"; fi ;;
+                  minor)  if [ "$LVL" = "major" ]; then MAX_BUMP="$LVL"; fi ;;
+                esac
+              fi
+            done
+          done
+
+          echo "level=${MAX_BUMP}" >> "$GITHUB_OUTPUT"
+          echo "issues=${CLOSED_ISSUES}" >> "$GITHUB_OUTPUT"
+          echo "Bump level: ${MAX_BUMP}${CLOSED_ISSUES:+ (from:${CLOSED_ISSUES})}"
 
       - name: Bump version
-        if: steps.bump.outputs.level != 'none'
+        if: steps.bump.outputs.level != 'none' && steps.bump.outputs.level != ''
         run: |
           LEVEL="${{ steps.bump.outputs.level }}"
           CURRENT=$(grep '^version = ' pyproject.toml | sed 's/.*"\(.*\)".*/\1/')
@@ -60,11 +140,12 @@ jobs:
           echo "version=${NEW}" >> "$GITHUB_ENV"
 
       - name: Trigger deploy via ntfy
-        if: steps.bump.outputs.level != 'none'
+        if: steps.bump.outputs.level != 'none' && steps.bump.outputs.level != ''
         run: |
           VERSION="${VERSION:-unknown}"
           SHORT_SHA="${GITHUB_SHA:0:7}"
           LEVEL="${{ steps.bump.outputs.level }}"
+          ISSUES="${{ steps.bump.outputs.issues }}"
 
           HTTP_CODE=$(curl -s -o /tmp/ntfy-response -w "%{http_code}" \
             -X POST "https://ntfy.kuri.casa/${{ secrets.NTFY_DEPLOY_TOPIC }}" \
@@ -72,7 +153,7 @@ jobs:
             -H "Title: [mcproxy] v${VERSION} — deploy" \
             -H "Tags: rocket,mcproxy" \
             -H "Priority: high" \
-            -d "deploy v${VERSION} ${SHORT_SHA} ${LEVEL}")
+            -d "deploy v${VERSION} ${SHORT_SHA} ${LEVEL}${ISSUES:+ issues:${ISSUES}}")
 
           if [ "$HTTP_CODE" -ne 200 ]; then
             echo "::error::ntfy deploy trigger failed (HTTP $HTTP_CODE)"
@@ -82,19 +163,20 @@ jobs:
           echo "Deploy triggered successfully"
 
       - name: Notify
-        if: steps.bump.outputs.level != 'none'
+        if: steps.bump.outputs.level != 'none' && steps.bump.outputs.level != ''
         run: |
           VERSION="${VERSION:-unknown}"
           LEVEL="${{ steps.bump.outputs.level }}"
           SHORT_SHA="${GITHUB_SHA:0:7}"
+          ISSUES="${{ steps.bump.outputs.issues }}"
 
           HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
             -X POST "https://ntfy.kuri.casa/org" \
             -H "Authorization: Bearer ${{ secrets.NTFY_TOKEN }}" \
             -H "Title: [mcproxy] v${VERSION} deployed (${LEVEL})" \
             -H "Tags: rocket,mcproxy" \
-            -H "Click: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}" \
-            -d "Triggered deploy v${VERSION} to server2 (${SHORT_SHA})")
+            -H "Click: ${{ github.server_url }}/${{ github.repository }}/releases/tag/v${VERSION}" \
+            -d "v${VERSION} deployed to server2${ISSUES:+ — closed:${ISSUES}}")
 
           if [ "$HTTP_CODE" -ne 200 ]; then
             echo "::warning::ntfy notification failed (HTTP $HTTP_CODE)"
