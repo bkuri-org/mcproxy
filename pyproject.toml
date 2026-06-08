@@ -1,6 +1,6 @@
 [project]
 name = "mcproxy"
-version = "5.1.2"
+version = "5.1.3"
 description = "Lightweight MCP gateway that aggregates multiple stdio MCP servers through namespaced SSE endpoints"
 readme = "README.md"
 requires-python = ">=3.11"
