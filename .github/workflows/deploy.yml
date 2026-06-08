@@ -122,7 +122,17 @@ jobs:
           NEW="${MAJOR}.${MINOR}.${PATCH}"
           echo "Bumping ${CURRENT} -> ${NEW} (${LEVEL})"
 
-          sed -i "s/^version = \"${CURRENT}\"/version = \"${NEW}\"/" pyproject.toml
+          if ! sed -i "s/^version = \"${CURRENT}\"/version = \"${NEW}\"/" pyproject.toml; then
+            echo "::error::Failed to update version in pyproject.toml"
+            exit 1
+          fi
+
+          # Verify the version was actually updated
+          VERIFY=$(grep '^version = ' pyproject.toml | sed 's/.*"\(.*\)".*/\1/')
+          if [ "$VERIFY" != "$NEW" ]; then
+            echo "::error::Version mismatch after sed: expected ${NEW}, got ${VERIFY}"
+            exit 1
+          fi
 
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
