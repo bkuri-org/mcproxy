@@ -178,13 +178,22 @@ def _detect_result_error(result: Dict[str, Any]) -> Optional[str]:
         return text
 
     # Pattern 2: Content that IS a JSON array of Pydantic errors (no prefix)
+    # Must look like Pydantic errors: dicts with 'type', 'loc', or 'msg' fields.
+    # Legitimate data arrays (e.g., list of kanban lists/cards) will not have
+    # these fields and must not be misidentified as errors.
     if text.startswith("["):
         try:
             parsed = json.loads(text)
             if isinstance(parsed, list) and all(isinstance(e, dict) for e in parsed):
-                parts = [_format_pydantic_error(e) for e in parsed]
-                if parts:
-                    return "; ".join(parts)
+                # Verify at least one dict has Pydantic error markers
+                is_pydantic = any(
+                    "type" in e or "loc" in e or "msg" in e
+                    for e in parsed
+                )
+                if is_pydantic:
+                    parts = [_format_pydantic_error(e) for e in parsed]
+                    if parts:
+                        return "; ".join(parts)
         except (json.JSONDecodeError, TypeError):
             pass
 
@@ -269,6 +278,57 @@ def _parse_pydantic_message(message: str) -> Optional[str]:
     if parts:
         return "; ".join(parts)
     return None
+
+
+class _ToolTimeoutError(RuntimeError):
+    """Raised when a tool call to an upstream MCP server times out.
+
+    Carries structured context so the router can return an informative
+    error to the calling agent instead of a generic timeout message.
+    """
+
+    def __init__(
+        self,
+        server_name: str,
+        method: str,
+        timeout_secs: int,
+        url: str,
+    ):
+        self.server_name = server_name
+        self.method = method
+        self.timeout_secs = timeout_secs
+        self.url = url
+        super().__init__(
+            f"Upstream MCP server '{server_name}' timed out after {timeout_secs}s "
+            f"on {method}. The server at {url} did not respond within the "
+            f"configured timeout. This is NOT a mcproxy issue — the upstream server "
+            f"is too slow to respond. Consider: (1) checking if the upstream server is "
+            f"healthy, (2) increasing tool_timeout for this server in mcproxy.json, "
+            f"or (3) fixing the upstream server code if it has an N+1 or performance bug."
+        )
+
+
+class _ConnectionError(RuntimeError):
+    """Raised when a connection to an upstream MCP server fails.
+
+    Carries structured context so the router can return an informative
+    error to the calling agent.
+    """
+
+    def __init__(
+        self,
+        server_name: str,
+        url: str,
+        detail: str,
+    ):
+        self.server_name = server_name
+        self.url = url
+        self.detail = detail
+        super().__init__(
+            f"Connection to upstream MCP server '{server_name}' failed: {detail}. "
+            f"The server at {url} is unreachable. This is NOT a mcproxy issue — "
+            f"the upstream server is down or misconfigured."
+        )
 
 
 logger = get_logger(__name__)
@@ -560,11 +620,30 @@ class HTTPServerConnector:
             return None
 
         except requests.exceptions.Timeout:
-            logger.error(f"Request to '{self.name}' timed out")
-            raise RuntimeError(f"Request timed out: {method}")
+            effective_timeout = timeout or self.timeout
+            logger.error(
+                f"Request to '{self.name}' timed out after {effective_timeout}s "
+                f"(method={method}, tool_timeout={self.tool_timeout}s, "
+                f"default_timeout={self.timeout}s)"
+            )
+            raise _ToolTimeoutError(
+                server_name=self.name,
+                method=method,
+                timeout_secs=effective_timeout,
+                url=self.url,
+            )
+        except requests.exceptions.ConnectionError as e:
+            logger.error(f"Connection failed to '{self.name}': {e}")
+            raise _ConnectionError(
+                server_name=self.name,
+                url=self.url,
+                detail=str(e),
+            )
         except requests.exceptions.RequestException as e:
             logger.error(f"Request to '{self.name}' failed: {e}")
-            raise RuntimeError(f"Request failed: {e}")
+            raise RuntimeError(
+                f"Request to upstream server '{self.name}' failed: {e}"
+            )
 
     def start_health_check(self, interval: int = 30) -> None:
         if self._health_task is not None and not self._health_task.done():
