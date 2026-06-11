@@ -132,10 +132,12 @@ async def sse_event_stream(
     """
     ns_info = f" namespace={namespace}" if namespace else ""
     try:
-        endpoint_data: Dict[str, Any] = {"uri": "/message"}
+        # MCP SSE transport spec: endpoint event data MUST be the URI path,
+        # not a JSON object. The SDK does urljoin(base_url, sse.data).
+        # Namespace is passed via X-Namespace header on subsequent POSTs.
+        yield f"event: endpoint\ndata: /message\n\n"
         if namespace:
-            endpoint_data["namespace"] = namespace
-        yield f"event: endpoint\ndata: {json.dumps(endpoint_data)}\n\n"
+            yield f"event: namespace\ndata: {namespace}\n\n"
 
         while True:
             if await request.is_disconnected():
