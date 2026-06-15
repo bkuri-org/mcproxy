@@ -49,8 +49,8 @@ def create_mcp_server(server_manager: Any) -> fastmcp.FastMCP:
     """
     mcp = fastmcp.FastMCP("mcproxy")
 
-    @mcp.tool()
-    async def call_tool(name: str, arguments: dict[str, Any] | None = None) -> str:
+    @mcp.tool(output_schema=None)
+    async def call_tool(name: str, arguments: dict[str, Any] | None = None):
         """Call any aggregated MCP tool.
 
         Args:
