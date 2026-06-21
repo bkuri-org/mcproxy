@@ -36,7 +36,7 @@ from server.lifecycle import (
 
 logger = get_logger(__name__)
 
-app = FastAPI(title="MCProxy", version="5.1.0")
+app = FastAPI(title="MCProxy", version="5.2.0")
 
 
 _handle_message = create_message_handler(
