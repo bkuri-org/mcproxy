@@ -160,7 +160,7 @@ Examples:
                             "capabilities": {},
                             "clientInfo": {
                                 "name": "mcproxy",
-                                "version": "5.1.0",
+                                "version": "5.2.0",
                             },
                         },
                     }
