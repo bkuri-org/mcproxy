@@ -10,7 +10,7 @@ from sandbox.constants import (
     get_blocked_imports,
 )
 from sandbox.executor import SandboxExecutor
-from sandbox.proxy import DynamicProxy, ProxyAPI
+# ponytail: proxy.py deleted — executor uses runtime.py string injection
 from sandbox.security import (
     BLOCKED_BUILTINS,
     BLOCKED_IMPORTS,
@@ -24,8 +24,6 @@ __all__ = [
     "SandboxExecutor",
     "AccessControlConfig",
     "NamespaceAccessControl",
-    "ProxyAPI",
-    "DynamicProxy",
     "suggest_tool_fix",
     "BLOCKED_IMPORTS",
     "BLOCKED_BUILTINS",

@@ -438,16 +438,7 @@ def create_message_handler(
     return handle_message
 
 
-# ============================================================================
-# Response Building Utilities
-# ============================================================================
-
-from .response import (
-    build_content_response,
-    build_error_response,
-    build_success_response,
-    wrap_content,
-)
+# ponytail: response.py deleted — functions were never called
 
 
 # ============================================================================
@@ -467,11 +458,6 @@ __all__ = [
     "handle_initialize",
     # Parsing
     "parse_inspect_code",
-    # Response building
-    "build_success_response",
-    "build_error_response",
-    "build_content_response",
-    "wrap_content",
     # Config
     "set_mcproxy_config",
     "get_mcproxy_config",

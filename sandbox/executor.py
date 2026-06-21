@@ -12,29 +12,27 @@ Features:
 
 import ast
 import asyncio
+import io
 import json
 import os
-import shutil
 import sys
-import tempfile
 import time
+import tokenize
 import unicodedata
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
-
-import orjson
 
 from code_validator import validate_code_for_dangerous_patterns
 from logging_config import get_logger
 from sandbox.access_control import AccessControlConfig, NamespaceAccessControl
+from sandbox.code_template import build_wrapped_code
 from sandbox.constants import MAX_CODE_SIZE_BYTES
-from sandbox.runtime import RUNTIME_CLASSES
 from sandbox.security import BLOCKED_BUILTINS, BLOCKED_IMPORTS
+from sandbox.subprocess_runner import run_subprocess, build_env
 from sandbox.validation import validate_code
 
 if TYPE_CHECKING:
     from auth import AuthContext, ScopeResolver
     from sandbox.pool import SandboxPool
-
 
 logger = get_logger(__name__)
 
@@ -61,17 +59,6 @@ class SandboxExecutor:
         pool: Optional["SandboxPool"] = None,
         scope_resolver: Optional["ScopeResolver"] = None,
     ):
-        """Initialize SandboxExecutor.
-
-        Args:
-            manifest: Sandbox manifest for access control
-            tool_executor: Async callable to execute tools
-            uv_path: Path to uv binary
-            default_timeout_secs: Default execution timeout
-            max_concurrency: Maximum concurrent parallel executions
-            pool: Optional SandboxPool for fast pooled execution
-            scope_resolver: Optional ScopeResolver for credential injection
-        """
         self._manifest = manifest
         self._tool_executor = tool_executor
         self._uv_path = uv_path
@@ -141,17 +128,7 @@ class SandboxExecutor:
         return True, ""
 
     def _preprocess_js_booleans(self, code: str) -> str:
-        """Convert JavaScript-style booleans to Python using AST.
-
-        Only replaces true/false/null that appear as standalone Name nodes
-        (not inside strings or as part of other identifiers).
-
-        Args:
-            code: Python code that may contain JS-style booleans
-
-        Returns:
-            Code with true->True, false->False, null->None converted
-        """
+        """Convert JavaScript-style booleans to Python using AST."""
         js_to_python = {"true": "True", "false": "False", "null": "None"}
 
         try:
@@ -186,19 +163,7 @@ class SandboxExecutor:
         return "".join(lines)
 
     def _preprocess_js_object_keys(self, code: str) -> str:
-        """Convert JavaScript-style object literals to Python dicts.
-
-        Handles { key: value } -> {"key": value} where key is an
-        unquoted identifier (Name node) used as a dict key.
-        In JS, { key: val } means a dict with string key "key".
-        In Python, { key: val } uses the variable `key` as the key.
-
-        Args:
-            code: Python code that may contain JS-style object literals
-
-        Returns:
-            Code with unquoted dict keys quoted
-        """
+        """Convert JavaScript-style object literals to Python dicts."""
         try:
             tree = ast.parse(code)
         except SyntaxError:
@@ -234,67 +199,18 @@ class SandboxExecutor:
         return "".join(lines)
 
     def _strip_comments(self, code: str) -> str:
-        """Remove comments from code for analysis.
-
-        Args:
-            code: Python code
-
-        Returns:
-            Code with comments removed
-        """
-        lines = code.split("\n")
-        cleaned_lines = []
-
-        for line in lines:
-            in_string = False
-            string_char = None
-            result = []
-            i = 0
-
-            while i < len(line):
-                char = line[i]
-
-                if not in_string:
-                    if char in "\"'":
-                        if i + 2 < len(line) and line[i : i + 3] in ('"""', "'''"):
-                            in_string = True
-                            string_char = line[i : i + 3]
-                            result.append(line[i : i + 3])
-                            i += 3
-                            continue
-                        else:
-                            in_string = True
-                            string_char = char
-                    elif char == "#":
-                        break
-
-                else:
-                    if string_char and len(string_char) == 3:
-                        if line[i : i + 3] == string_char:
-                            in_string = False
-                            result.append(line[i : i + 3])
-                            i += 3
-                            continue
-                    else:
-                        if char == string_char and (i == 0 or line[i - 1] != "\\"):
-                            in_string = False
-
-                result.append(char)
-                i += 1
-
-            cleaned_lines.append("".join(result))
-
-        return "\n".join(cleaned_lines)
+        """Remove comments from code for analysis using stdlib tokenize."""
+        try:
+            tokens = []
+            for tok in tokenize.generate_tokens(io.StringIO(code).readline):
+                if tok.type != tokenize.COMMENT:
+                    tokens.append(tok)
+            return tokenize.untokenize(tokens)
+        except tokenize.TokenError:
+            return code  # ponytail: fallback if tokenize chokes on incomplete code
 
     def _check_blocked_imports(self, tree: ast.AST) -> Optional[str]:
-        """Check for blocked imports in AST.
-
-        Args:
-            tree: Parsed AST
-
-        Returns:
-            Blocked module name if found, None otherwise
-        """
+        """Check for blocked imports in AST."""
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 for alias in node.names:
@@ -311,14 +227,7 @@ class SandboxExecutor:
         return None
 
     def _check_blocked_builtins(self, tree: ast.AST) -> Optional[str]:
-        """Check for blocked builtin calls in AST.
-
-        Args:
-            tree: Parsed AST
-
-        Returns:
-            Blocked builtin name if found, None otherwise
-        """
+        """Check for blocked builtin calls in AST."""
         for node in ast.walk(tree):
             if isinstance(node, ast.Call):
                 if isinstance(node.func, ast.Name):
@@ -338,21 +247,7 @@ class SandboxExecutor:
         trace: bool = False,
         auth_context: Optional["AuthContext"] = None,
     ) -> Dict[str, Any]:
-        """Execute user code in a uv subprocess with IPC support.
-
-        Args:
-            code: Python code to execute
-            namespace: Namespace for access control
-            timeout_secs: Execution timeout (uses default if None)
-            dependencies: Optional list of pip dependencies
-            session: Optional SessionStash for session-scoped storage
-            retries: Number of retries for failed tool calls (default: 0)
-            trace: Enable call tracing (default: False)
-            auth_context: Optional AuthContext for credential injection
-
-        Returns:
-            Dict with status, result, traceback, execution_time_ms, and optionally tool_calls
-        """
+        """Execute user code in a uv subprocess with IPC support."""
         timeout = timeout_secs or self._default_timeout_secs
 
         code = self._preprocess_js_booleans(code)
@@ -411,20 +306,15 @@ class SandboxExecutor:
                 response["stdout"] = result.get("stdout")
             return response
 
-        wrapped_code = self._wrap_code(
-            code, namespace, access_control, session, retries, trace
+        wrapped_code = self._build_wrapped_code(
+            code, namespace, session, retries, trace
         )
 
         start_time = time.perf_counter()
 
         try:
             stdout = await self._run_uv_subprocess_async(
-                wrapped_code,
-                namespace,
-                access_control,
-                timeout,
-                dependencies or [],
-                auth_context,
+                wrapped_code, namespace, access_control, timeout, dependencies or [], auth_context
             )
 
             execution_time_ms = int((time.perf_counter() - start_time) * 1000)
@@ -457,7 +347,6 @@ class SandboxExecutor:
                         session, result["stash_updates"]
                     )
 
-                # Build response with stdout if present
                 response_data = {
                     "status": "error" if result.get("traceback") else "success",
                     "result": result.get("result"),
@@ -466,11 +355,9 @@ class SandboxExecutor:
                     "tool_time_ms": result.get("tool_time_ms", 0),
                 }
 
-                # Include stdout if it has content
                 if result.get("stdout"):
                     response_data["stdout"] = result.get("stdout")
 
-                # Include tool_calls if tracing was enabled
                 if "tool_calls" in result:
                     response_data["tool_calls"] = result["tool_calls"]
 
@@ -519,12 +406,7 @@ class SandboxExecutor:
     async def _apply_stash_updates_async(
         self, session: Any, updates: List[Dict[str, Any]]
     ) -> None:
-        """Apply stash updates from sandbox execution to session.
-
-        Args:
-            session: SessionStash instance
-            updates: List of stash operations from sandbox
-        """
+        """Apply stash updates from sandbox execution to session."""
         for update in updates:
             op = update.get("op")
             key = update.get("key")
@@ -537,28 +419,34 @@ class SandboxExecutor:
             elif op == "clear":
                 await session.clear()
 
-    def _wrap_code(
+    # Thin delegation methods for test compatibility (tests mock these)
+
+    async def _run_uv_subprocess_async(
+        self, code, namespace, access_control, timeout, dependencies, auth_context=None
+    ):
+        return await run_subprocess(
+            code=code, namespace=namespace, timeout=timeout,
+            uv_path=self._uv_path, dependencies=dependencies,
+            python_path=self._python_path,
+            tool_executor=self._tool_executor,
+            scope_resolver=self._scope_resolver, auth_context=auth_context,
+        )
+
+    def _build_env(self, namespace, access_control, ipc_sock_path=None):
+        return build_env(namespace, ipc_sock_path)
+
+    def _wrap_code(self, user_code, namespace, access_control, session=None, retries=0, trace=False):
+        return self._build_wrapped_code(user_code, namespace, session, retries, trace)
+
+    def _build_wrapped_code(
         self,
         user_code: str,
         namespace: str,
-        access_control: NamespaceAccessControl,
         session: Optional[Any] = None,
         retries: int = 0,
         trace: bool = False,
     ) -> str:
-        """Wrap user code with sandbox infrastructure.
-
-        Args:
-            user_code: User's Python code
-            namespace: Namespace for access control
-            access_control: Access control instance
-            session: Optional SessionStash for session-scoped storage
-            retries: Number of retries for failed tool calls (default: 0)
-            trace: Enable call tracing (default: False)
-
-        Returns:
-            Wrapped code that includes api, stash, and parallel APIs
-        """
+        """Build wrapped code string using the code template."""
         manifest_json = json.dumps(
             {
                 "servers": self._manifest.servers,
@@ -590,492 +478,12 @@ class SandboxExecutor:
             except Exception:
                 stash_data_json = "{}"
 
-        return f'''
-import json
-import sys
-import io
-import ast
-
-{RUNTIME_CLASSES}
-
-def get_blocked_functions():
-    """Return list of functions blocked in sandbox for security."""
-    return [
-        "eval()",
-        "exec()",
-        "compile()",
-        "open() (file operations)",
-        "input()",
-        "__import__()",
-        "breakpoint()",
-        "hasattr()",
-        "getattr()",
-        "setattr()",
-        "delattr()",
-        "os.system()",
-        "os.popen()",
-        "subprocess.* (all subprocess calls)",
-        "pickle.loads() / pickle.load()",
-        "marshal.loads() / marshal.load()",
-        "importlib.import_module()",
-    ]
-
-def get_blocked_imports():
-    """Return list of modules blocked from import."""
-    return [
-        "os",
-        "sys",
-        "subprocess",
-        "socket",
-        "http",
-        "urllib",
-        "requests",
-        "shutil",
-        "tempfile",
-        "multiprocessing",
-        "pickle",
-        "marshal",
-        "importlib",
-        "builtins",
-    ]
-
-def get_blocked_attributes():
-    """Return list of blocked dunder attributes."""
-    return [
-        "__class__",
-        "__bases__",
-        "__subclasses__",
-        "__globals__",
-        "__locals__",
-        "__code__",
-        "__builtins__",
-        "__dict__",
-        "__mro__",
-        "__init__",
-        "__new__",
-        "__reduce__",
-        "__getstate__",
-        "__setstate__",
-    ]
-
-_PARALLEL_MAX_CONCURRENCY = {self._max_concurrency}
-_RETRIES = {retries}
-_TRACE_ENABLED = {trace}
-_ipc_client = _IPCClient(_RETRIES)
-_manifest_data = json.loads({repr(manifest_json)})
-_manifest = _Manifest(_manifest_data)
-_registry = _CapabilityRegistry(_manifest)
-_access_control = _NamespaceAccessControl(_registry)
-api = _APIProxy("{namespace}", _access_control, _ipc_client, _manifest)
-_stash_initial = json.loads({repr(stash_data_json)})
-stash = _StashProxy(_stash_initial)
-
-# Enable tracing if requested
-if _TRACE_ENABLED:
-    _TraceCollector.get().enable()
-
-_result = None
-_error = None
-_stdout_output = ""
-
-try:
-    import re
-
-    # Capture stdout
-    _old_stdout = sys.stdout
-    sys.stdout = io.StringIO()
-
-    local_vars = {{"__builtins__": __builtins__, "api": api, "stash": stash, "parallel": parallel, "json": json, "re": re, "sys": sys, "get_blocked_functions": get_blocked_functions, "get_blocked_imports": get_blocked_imports, "get_blocked_attributes": get_blocked_attributes}}
-
-    # Try to extract and evaluate last expression for REPL behavior
-    _last_expr_value = None
-    try:
-        _ast = ast.parse({repr(user_code)})
-        if _ast.body:
-            _last_stmt = _ast.body[-1]
-            # If last statement is an expression, capture its value
-            if isinstance(_last_stmt, ast.Expr):
-                # Execute all but the last statement
-                if len(_ast.body) > 1:
-                    _setup_code = ast.Module(body=_ast.body[:-1], type_ignores=[])
-                    exec(compile(_setup_code, '<string>', 'exec'), local_vars, local_vars)
-                # Evaluate the last expression and capture result
-                _last_expr_value = eval(compile(ast.Expression(body=_last_stmt.value), '<string>', 'eval'), local_vars, local_vars)
-            else:
-                # Last statement is not an expression, execute all
-                exec({repr(user_code)}, local_vars, local_vars)
-        else:
-            exec({repr(user_code)}, local_vars, local_vars)
-    except (SyntaxError, ValueError):
-        # Fallback to simple exec if AST parsing fails
-        exec({repr(user_code)}, local_vars, local_vars)
-
-    # Restore stdout and capture output
-    _stdout_output = sys.stdout.getvalue()
-    sys.stdout = _old_stdout
-
-    # Determine result: last expression > result variable > run() function
-    if _last_expr_value is not None:
-        _result = _last_expr_value
-    elif "run" in local_vars and callable(local_vars["run"]):
-        run_func = local_vars["run"]
-        _result = run_func()
-    elif "result" in local_vars:
-        _result = local_vars["result"]
-except NameError as e:
-    import traceback
-    _stdout_output = sys.stdout.getvalue()
-    sys.stdout = _old_stdout
-    _error = traceback.format_exc()
-
-    # Check for common mistakes
-    error_str = str(_error)
-
-    # Pattern: blocked builtin access
-    blocked_names = ["eval", "exec", "compile", "open", "input", "__import__", "breakpoint", "hasattr", "getattr", "setattr", "delattr"]
-    found_blocked = False
-    for _bn in blocked_names:
-        if f"name '{{_bn}}'" in error_str.lower() or f"name '{{_bn}}'" in error_str:
-            _error = f"""NameError: '{{_bn}}' is blocked for security.
-
-Call get_blocked_functions() to see all blocked functions."""
-            found_blocked = True
-            break
-
-    if not found_blocked:
-        # Pattern 1: server__tool() direct call
-        match = re.search(r"name '([\\w]+__[\\w]+)' is not defined", error_str)
-        if match:
-            tool_name = match.group(1)
-            parts = tool_name.split("__", 1)
-            if len(parts) == 2:
-                server, tool = parts
-                _error = f"""NameError: '{{tool_name}}' is not a function.
-
-Use api.server() to call tools:
-
-    result = api.server("{{server}}").{{tool}}(...)
-
-Available: api.manifest()"""
-        elif "call_tool" in error_str and "is not defined" in error_str:
-            # Pattern 2: call_tool without api prefix
-            _error = """NameError: 'call_tool' is not defined.
-
-Use api.call_tool():
-
-    result = api.call_tool("server", "tool", {{"arg": "value"}})"""
-        elif re.search(r"name '(server|manifest)' is not defined", error_str):
-            # Pattern 3: Using 'server' directly
-            _error = """NameError: Use the 'api' object to access tools.
-
-    result = api.server("name").tool(args)
-
-api.manifest()"""
-except Exception as e:
-    import traceback
-    _stdout_output = sys.stdout.getvalue()
-    sys.stdout = _old_stdout
-    _error = traceback.format_exc()
-
-output = {{
-    "result": _result,
-    "stdout": _stdout_output,
-    "traceback": _error,
-    "stash_updates": stash._get_updates(),
-}}
-
-# Include trace data if tracing was enabled
-if _TRACE_ENABLED:
-    output["tool_calls"] = _TraceCollector.get().get_calls()
-
-print(json.dumps(output))
-'''
-
-    def _build_env(
-        self,
-        namespace: str,
-        access_control: NamespaceAccessControl,
-        ipc_sock_path: Optional[str] = None,
-    ) -> Dict[str, str]:
-        """Build clean environment for subprocess.
-
-        Args:
-            namespace: Namespace for context
-            access_control: Access control instance
-            ipc_sock_path: Optional Unix socket path for IPC
-
-        Returns:
-            Clean environment dict
-        """
-        env = {
-            "PYTHONIOENCODING": "utf-8",
-            "PYTHONUNBUFFERED": "1",
-            "SANDBOX_NAMESPACE": namespace,
-        }
-        if ipc_sock_path:
-            env["MCPROXY_IPC_SOCK"] = ipc_sock_path
-        return env
-
-    async def _run_uv_subprocess_async(
-        self,
-        code: str,
-        namespace: str,
-        access_control: NamespaceAccessControl,
-        timeout: int,
-        dependencies: List[str],
-        auth_context: Optional["AuthContext"] = None,
-    ) -> str:
-        """Run code in uv subprocess with IPC support.
-
-        Args:
-            code: Python code to execute
-            namespace: Namespace for access control
-            access_control: Access control instance
-            timeout: Timeout in seconds
-            dependencies: List of pip dependencies
-            auth_context: Optional AuthContext for credential injection
-
-        Returns:
-            stdout from subprocess
-
-        Raises:
-            asyncio.TimeoutError: If timeout exceeded
-            RuntimeError: If process fails
-        """
-        ipc_temp_dir = tempfile.mkdtemp(prefix="mcproxy_ipc_")
-        ipc_sock_path = os.path.join(ipc_temp_dir, "ipc.sock")
-        ipc_server: Optional[asyncio.Server] = None
-
-        async def handle_ipc_with_auth(
-            reader: asyncio.StreamReader, writer: asyncio.StreamWriter
-        ) -> None:
-            await self._handle_ipc_connection(reader, writer, auth_context)
-
-        try:
-            ipc_server = await asyncio.start_unix_server(
-                handle_ipc_with_auth,
-                path=ipc_sock_path,
-            )
-            os.chmod(ipc_sock_path, 0o600)
-
-            env = self._build_env(namespace, access_control, ipc_sock_path)
-
-            # Write code to temp file to avoid "Argument list too long" error
-            # when passing large wrapped code via -c flag
-            with tempfile.NamedTemporaryFile(
-                mode="w", suffix=".py", delete=False
-            ) as code_file:
-                code_file.write(code)
-                code_file_path = code_file.name
-
-            try:
-                venv_python = os.path.join(os.path.dirname(sys.executable), "python")
-                if os.path.isfile(venv_python) and os.access(venv_python, os.X_OK):
-                    cmd = [venv_python, code_file_path]
-                    logger.debug(f"Running venv subprocess: {venv_python}")
-                else:
-                    cmd = [self._uv_path, "run"]
-                    for dep in dependencies:
-                        cmd.extend(["--with", dep])
-                    cmd.extend(["python", code_file_path])
-                    logger.debug(f"Running uv subprocess: {' '.join(cmd[:5])}...")
-
-                process = await asyncio.create_subprocess_exec(
-                    *cmd,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                    env=env,
-                )
-
-                try:
-                    stdout_bytes, stderr_bytes = await asyncio.wait_for(
-                        process.communicate(),
-                        timeout=timeout,
-                    )
-                except asyncio.TimeoutError:
-                    process.kill()
-                    await process.wait()
-                    raise
-
-                stdout = stdout_bytes.decode("utf-8", errors="replace")
-                stderr = stderr_bytes.decode("utf-8", errors="replace")
-
-                if process.returncode != 0:
-                    error_msg = (
-                        stderr or f"Process exited with code {process.returncode}"
-                    )
-                    raise RuntimeError(error_msg)
-
-                return stdout
-            finally:
-                # Clean up temp code file
-                try:
-                    os.unlink(code_file_path)
-                except OSError:
-                    pass
-        finally:
-            # Clean up IPC resources (local, not instance vars)
-            if ipc_server is not None:
-                ipc_server.close()
-                await ipc_server.wait_closed()
-
-            if ipc_sock_path and os.path.exists(ipc_sock_path):
-                try:
-                    os.unlink(ipc_sock_path)
-                except OSError:
-                    pass
-
-            if ipc_temp_dir and os.path.exists(ipc_temp_dir):
-                try:
-                    shutil.rmtree(ipc_temp_dir)
-                except OSError:
-                    pass
-
-    async def _handle_ipc_connection(
-        self,
-        reader: asyncio.StreamReader,
-        writer: asyncio.StreamWriter,
-        auth_context: Optional["AuthContext"] = None,
-    ) -> None:
-        """Handle incoming IPC connection from sandbox subprocess.
-
-        Args:
-            reader: Stream reader for incoming data
-            writer: Stream writer for outgoing data
-            auth_context: Optional AuthContext for credential injection
-        """
-        try:
-            data = await reader.read(65536)
-            if not data:
-                logger.debug("[IPC] Empty data received, client disconnected")
-                return
-
-            try:
-                request = orjson.loads(data)
-            except (orjson.JSONDecodeError, json.JSONDecodeError) as e:
-                response = {
-                    "call_id": None,
-                    "status": "error",
-                    "error": f"Invalid JSON: {e}",
-                }
-                writer.write(orjson.dumps(response))
-                await writer.drain()
-                writer.close()
-                await writer.wait_closed()
-                return
-
-            call_id = request.get("call_id")
-            server = request.get("server")
-            tool = request.get("tool")
-            args = request.get("args", {})
-            call_start = time.perf_counter()
-            logger.info(
-                f"[IPC_EXEC] server={server} tool={tool} args={args} type={type(args)}"
-            )
-
-            if args is None:
-                args = {}
-
-            injected_args = dict(args)
-
-            if self._scope_resolver is not None and auth_context is not None:
-                fq_tool_name = f"{server}.{tool}"
-                try:
-                    resolved = self._scope_resolver.resolve_for_tool(
-                        fq_tool_name, auth_context.scopes
-                    )
-                    if resolved is not None:
-                        if resolved.inject_type == "env":
-                            env_key = f"_env_{resolved.inject_as}"
-                            injected_args[env_key] = resolved.value
-                        elif resolved.inject_type == "header":
-                            header_key = f"_header_{resolved.inject_as}"
-                            injected_args[header_key] = resolved.value
-                        logger.debug(
-                            f"[IPC_CREDENTIAL] Injected {resolved.inject_type} "
-                            f"'{resolved.inject_as}' for tool {fq_tool_name}"
-                        )
-                except Exception as cred_error:
-                    call_ms = int((time.perf_counter() - call_start) * 1000)
-                    error_msg = str(cred_error)
-                    logger.error(f"[IPC_CREDENTIAL_ERROR] {error_msg}")
-                    response = {
-                        "call_id": call_id,
-                        "status": "error",
-                        "error": error_msg,
-                        "duration_ms": call_ms,
-                    }
-                    writer.write(orjson.dumps(response))
-                    await writer.drain()
-                    writer.close()
-                    await writer.wait_closed()
-                    return
-
-            try:
-                result = self._tool_executor(server, tool, injected_args)
-                if asyncio.iscoroutine(result):
-                    result = await result
-
-                call_ms = int((time.perf_counter() - call_start) * 1000)
-                logger.info(
-                    f"[IPC_EXEC_COMPLETE] server={server} tool={tool} duration_ms={call_ms}"
-                )
-
-                response = {
-                    "call_id": call_id,
-                    "status": "success",
-                    "result": result,
-                    "duration_ms": call_ms,
-                }
-            except Exception as e:
-                call_ms = int((time.perf_counter() - call_start) * 1000)
-                error_msg = str(e)
-                logger.error(f"[IPC] Tool call failed: {server}.{tool}: {e}")
-
-                if "timeout" in error_msg.lower() or "timed out" in error_msg.lower():
-                    error_msg = (
-                        f"Upstream MCP server '{server}' timed out. "
-                        f"The tool '{tool}' did not respond within the configured timeout. "
-                        f"This is a server-side issue, not a mcproxy issue. "
-                        f"Original error: {error_msg}"
-                    )
-
-                response = {
-                    "call_id": call_id,
-                    "status": "error",
-                    "error": error_msg,
-                    "duration_ms": call_ms,
-                }
-
-            try:
-                response_bytes = orjson.dumps(response)
-            except Exception as serialize_err:
-                logger.error(f"[IPC] Failed to serialize response: {serialize_err}")
-                response_bytes = orjson.dumps(
-                    {
-                        "call_id": call_id,
-                        "status": "error",
-                        "error": f"Response serialization failed: {serialize_err}",
-                    }
-                )
-            writer.write(response_bytes)
-            await writer.drain()
-
-        except Exception as e:
-            logger.error(f"[IPC] Connection error: {e}")
-            error_response = {
-                "call_id": None,
-                "status": "error",
-                "error": f"IPC connection error: {e}",
-            }
-            try:
-                writer.write(orjson.dumps(error_response))
-                await writer.drain()
-            except Exception:
-                logger.error("[IPC] Failed to send error response")
-        finally:
-            try:
-                writer.close()
-                await writer.wait_closed()
-            except Exception:
-                pass
+        return build_wrapped_code(
+            user_code=user_code,
+            namespace=namespace,
+            manifest_json=manifest_json,
+            stash_data_json=stash_data_json,
+            max_concurrency=self._max_concurrency,
+            retries=retries,
+            trace=trace,
+        )

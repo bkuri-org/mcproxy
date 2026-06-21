@@ -4,16 +4,14 @@ import json
 import pytest
 from pathlib import Path
 from typing import Any, Dict, List
-from unittest.mock import patch, MagicMock, AsyncMock
 
 from manifest import CapabilityRegistry, ManifestQuery, EventHookManager
 from sandbox import (
     SandboxExecutor,
     AccessControlConfig,
     NamespaceAccessControl,
-    ProxyAPI,
 )
-from config_watcher import load_config, validate_schema, ConfigError
+from config_watcher import load_config
 
 
 class TestSearchExecuteFlow:
@@ -105,16 +103,7 @@ class TestSearchExecuteFlow:
         assert not allowed
         assert "does not have access" in error
 
-    def test_proxy_api_enforces_access_control(self, integrated_system: Dict[str, Any]):
-        sandbox_manifest = integrated_system["sandbox_manifest"]
-        access_control = NamespaceAccessControl(sandbox_manifest)
-        api = ProxyAPI("browser", access_control, lambda *args: {"result": "ok"})
 
-        proxy = api.server("playwright")
-        assert proxy._server_name == "playwright"
-
-        with pytest.raises(PermissionError):
-            api.server("filesystem")
 
 
 class TestNamespaceIsolation:
@@ -187,21 +176,7 @@ class TestNamespaceIsolation:
         assert system_tools == []
         assert "does not have access" in error
 
-    def test_proxy_api_isolated_view(self, isolated_manifest: AccessControlConfig):
-        access_control = NamespaceAccessControl(isolated_manifest)
 
-        crypto_api = ProxyAPI("crypto", access_control, lambda *args: None)
-        crypto_manifest = crypto_api.manifest()
-
-        assert "crypto" in crypto_manifest["allowed_servers"]
-        assert "system" not in crypto_manifest["allowed_servers"]
-
-        admin_api = ProxyAPI("admin", access_control, lambda *args: None)
-        admin_manifest = admin_api.manifest()
-
-        assert "crypto" in admin_manifest["allowed_servers"]
-        assert "system" in admin_manifest["allowed_servers"]
-        assert "playwright" in admin_manifest["allowed_servers"]
 
 
 class TestManifestRefreshOnConfigChange:
