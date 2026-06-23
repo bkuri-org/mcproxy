@@ -241,10 +241,24 @@ async def mcp_endpoint(request: Request) -> Response:
             if actual_id is not None and actual_id != expected_id:
                 logger.error(
                     f"[adapter] id mismatch: expected {expected_id!r}, got "
-                    f"{actual_id!r} \u2014 subprocess likely buffers stdout "
-                    f"(responses arriving one request late)"
+                    f"{actual_id!r} (subprocess likely buffers stdout; "
+                    f"responses arriving one request late)"
                 )
-                yield f"data: {json.dumps({'jsonrpc': '2.0', 'id': expected_id, 'error': {'code': -32000, 'message': f'Adapter id mismatch: expected {expected_id!r}, received {actual_id!r}. The wrapped subprocess returned a response for a different request \u2014 likely a stdout buffering bug (responses arriving one request late).'}})}\n\n"
+                err = {
+                    "jsonrpc": "2.0",
+                    "id": expected_id,
+                    "error": {
+                        "code": -32000,
+                        "message": (
+                            f"Adapter id mismatch: expected {expected_id!r}, "
+                            f"received {actual_id!r}. The wrapped subprocess "
+                            f"returned a response for a different request "
+                            f"(likely a stdout buffering bug; responses "
+                            f"arriving one request late)."
+                        ),
+                    },
+                }
+                yield f"data: {json.dumps(err)}\n\n"
                 return
 
             yield f"data: {json.dumps(response)}\n\n"
