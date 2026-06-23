@@ -63,7 +63,10 @@ RUN set -e; \
 
 # Install uv tools
 RUN uv tool install mcpdoc 2>&1 | tail -2
-RUN uv tool install perplexity-mcp 2>&1 | tail -2
+
+# Perplexity: official @perplexity-ai/mcp-server (the community 'perplexity-mcp'
+# has a stdout-flush bug — it ships each response one request late).
+RUN npm install -g @perplexity-ai/mcp-server 2>&1 | tail -2
 
 # Copy adapter code
 COPY adapter.py logging_config.py /app/

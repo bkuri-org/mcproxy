@@ -231,6 +231,22 @@ async def mcp_endpoint(request: Request) -> Response:
                     yield f"data: {json.dumps({'jsonrpc': '2.0', 'error': {'code': -32000, 'message': 'No response from subprocess'}, 'id': body.get('id')})}\n\n"
                 return
 
+            # ponytail: guard against broken-flush stdio servers that return a
+            # previous request's response one call late (e.g. community
+            # perplexity-mcp). Without this, mcproxy silently surfaces wrong
+            # data — an initialize response for a tools/list call. Skew on the
+            # JSON-RPC id is the tell; error loudly instead.
+            expected_id = body.get("id")
+            actual_id = response.get("id")
+            if actual_id is not None and actual_id != expected_id:
+                logger.error(
+                    f"[adapter] id mismatch: expected {expected_id!r}, got "
+                    f"{actual_id!r} \u2014 subprocess likely buffers stdout "
+                    f"(responses arriving one request late)"
+                )
+                yield f"data: {json.dumps({'jsonrpc': '2.0', 'id': expected_id, 'error': {'code': -32000, 'message': f'Adapter id mismatch: expected {expected_id!r}, received {actual_id!r}. The wrapped subprocess returned a response for a different request \u2014 likely a stdout buffering bug (responses arriving one request late).'}})}\n\n"
+                return
+
             yield f"data: {json.dumps(response)}\n\n"
 
     headers = {}
