@@ -22,6 +22,27 @@ from utils.fuzzy_match import suggest_best_match
 logger = get_logger(__name__)
 
 
+def _is_response_for(msg: Dict[str, Any], req_id: str) -> bool:
+    """True if ``msg`` is the JSON-RPC response for request ``req_id``.
+
+    Guards against the id-mismatch desync: an MCP server's SSE/HTTP stream can
+    interleave notifications and even a stale or concurrent request's response
+    ahead of the one we asked for. Without correlating on ``id`` the first
+    result/error in the stream gets returned as our answer — silently wrong.
+
+    - notifications / server-initiated requests carry a ``method`` → never a response
+    - a response echoes the request ``id``; a mismatched id is skipped
+    - a result/error with no ``id`` and no ``method`` is a legacy response
+      (some non-conforming servers omit the id) → accepted as fallback
+    """
+    if "method" in msg:
+        return False
+    if "result" not in msg and "error" not in msg:
+        return False
+    msg_id = msg.get("id")
+    return msg_id is None or msg_id == req_id
+
+
 # Type mappings for human-friendly validation error messages
 _TYPE_DISPLAY = {
     "string": "string (text)",
@@ -363,6 +384,7 @@ class HTTPServerConnector:
         self.session_id: Optional[str] = None
         self._tools: List[Dict[str, Any]] = []
         self._initialized = False
+        self._id_seq = 0
 
         self._reconnect_attempts = 0
         self._reconnect_backoff_until: float = 0.0
@@ -377,6 +399,11 @@ class HTTPServerConnector:
     @tools.setter
     def tools(self, value: List[Dict[str, Any]]) -> None:
         self._tools = value
+
+    def _next_id(self, prefix: str = "req") -> str:
+        """Monotonic per-connector request id so concurrent calls never collide."""
+        self._id_seq += 1
+        return f"{prefix}_{self._id_seq}"
 
     async def start(self) -> bool:
         try:
@@ -469,11 +496,15 @@ class HTTPServerConnector:
 
         logger.info(f"[CALL_TOOL_START] server={self.name} tool={tool_name}")
 
+        # Unique per-call id: two concurrent calls to the same tool must be
+        # distinguishable, or the server's responses can't be told apart.
+        req_id = self._next_id("call")
+
         try:
             response = self._send_request(
                 method="tools/call",
                 params={"name": tool_name, "arguments": arguments},
-                id=f"call_{tool_name}",
+                id=req_id,
                 timeout=timeout_seconds,
             )
         except RuntimeError as e:
@@ -486,7 +517,7 @@ class HTTPServerConnector:
                     response = self._send_request(
                         method="tools/call",
                         params={"name": tool_name, "arguments": arguments},
-                        id=f"call_{tool_name}",
+                        id=req_id,
                         timeout=timeout_seconds,
                     )
                 else:
@@ -501,7 +532,7 @@ class HTTPServerConnector:
                     response = self._send_request(
                         method="tools/call",
                         params={"name": tool_name, "arguments": arguments},
-                        id=f"call_{tool_name}",
+                        id=req_id,
                         timeout=timeout_seconds,
                     )
                 else:
@@ -588,15 +619,20 @@ class HTTPServerConnector:
             # Streamable HTTP (MCP 2025-06-18): plain JSON response
             if "application/json" in content_type:
                 try:
-                    result = response.json()
-                    if "result" in result or "error" in result:
-                        return result
+                    msg = response.json()
+                    if _is_response_for(msg, id):
+                        return msg
                 except (json.JSONDecodeError, ValueError):
                     pass
-                logger.warning(f"No valid JSON-RPC response from '{self.name}'")
+                logger.warning(
+                    f"No JSON-RPC response matching id={id!r} from '{self.name}'"
+                )
                 return None
 
-            # SSE transport: scan for data: lines
+            # SSE transport: return the data: line that answers THIS request.
+            # Skip notifications (they carry a "method") and any message whose
+            # JSON-RPC id doesn't match — those belong to a different (stale or
+            # concurrent) request and must not be returned as our answer.
             for line in response.iter_lines():
                 if not line:
                     continue
@@ -605,16 +641,21 @@ class HTTPServerConnector:
                 if not line_str:
                     continue
 
-                if line_str.startswith("data:"):
-                    data_str = line_str[5:].strip()
-                    try:
-                        result = json.loads(data_str)
-                        if "result" in result:
-                            return result
-                        if "error" in result:
-                            return result
-                    except json.JSONDecodeError:
-                        continue
+                if not line_str.startswith("data:"):
+                    continue
+
+                try:
+                    msg = json.loads(line_str[5:].strip())
+                except json.JSONDecodeError:
+                    continue
+
+                if _is_response_for(msg, id):
+                    return msg
+                logger.debug(
+                    f"[{self.name}] skipping stream message "
+                    f"(id={msg.get('id')!r}, method={msg.get('method')!r}) "
+                    f"while waiting for id={id!r}"
+                )
 
             logger.warning(f"No valid JSON-RPC response from '{self.name}'")
             return None
