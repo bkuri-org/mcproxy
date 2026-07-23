@@ -16,14 +16,10 @@ Volume=/srv/containers/mcproxy/config/.env:/app/.env:ro,Z
 Volume=mcproxy-data:/app/data:Z
 Volume=mcproxy-cache:/app/cache:Z
 
-# Security
+# Security (Quadlet keys — NOT compose/docker-run names)
 ReadOnly=true
-SecurityOpt=no-new-privileges
-CapDrop=ALL
-
-# Resources
-Memory=512M
-MemorySwap=512M
+NoNewPrivileges=true
+DropCapability=ALL
 
 # Logging
 LogDriver=k8s-file
@@ -38,6 +34,9 @@ Label=phase=3-bridge
 [Service]
 Restart=always
 TimeoutStartSec=60
+# Resource limits (Quadlet has no Memory= key; use systemd cgroup controls)
+MemoryMax=512M
+MemorySwapMax=512M
 
 [Install]
 WantedBy=multi-user.target default.target
