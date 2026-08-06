@@ -16,6 +16,7 @@
     {"name": "home_assistant", "type": "http", "url": "http://mcp-home-assistant:8080/mcp", "timeout": 120, "enabled": true},
     {"name": "zilliqa_insights", "type": "http", "url": "https://insights.mcp.zilliqa.com/mcp", "timeout": 30, "connect_timeout": 5, "enabled": true},
     {"name": "coinmarketcap", "type": "http", "url": "https://gateway.pipeworx.io/coinmarketcap/mcp", "timeout": 30, "connect_timeout": 5, "enabled": true},
+    {"name": "kontra", "type": "http", "url": "http://mcp-kontra:8080/mcp", "timeout": 120, "enabled": true},
     {"name": "termux", "type": "http", "url": "http://host.docker.internal:12140/mcp", "timeout": 120, "enabled": true}
   ],
   "blocklist_enabled": false,
@@ -23,7 +24,7 @@
     "list_brief_threshold": 500
   },
   "namespaces": {
-    "thinking": {"servers": ["sequential_thinking", "atom_of_thoughts", "think_tool"], "isolated": false},
+    "thinking": {"servers": ["sequential_thinking", "atom_of_thoughts", "think_tool", "kontra"], "isolated": false},
     "financial": {"servers": ["asset_price", "coinstats", "fear_greed_index", "zilliqa_insights", "coinmarketcap"], "isolated": false},
     "web": {"servers": ["wikipedia", "pure_md", "youtube"], "isolated": false},
     "docs": {"servers": ["llms_txt"], "isolated": false},
