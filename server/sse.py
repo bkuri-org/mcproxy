@@ -134,8 +134,12 @@ async def sse_event_stream(
     try:
         # MCP SSE transport spec: endpoint event data MUST be the URI path,
         # not a JSON object. The SDK does urljoin(base_url, sse.data).
-        # Namespace is passed via X-Namespace header on subsequent POSTs.
-        yield f"event: endpoint\ndata: /message\n\n"
+        # Advertise the namespaced POST path so spec-compliant clients (which
+        # POST wherever `endpoint` says) keep the namespace binding without
+        # having to echo X-Namespace on every request. The /sse/{ns} POST
+        # handler exists and threads path_namespace into handle_message.
+        endpoint_path = f"/sse/{namespace}" if namespace else "/message"
+        yield f"event: endpoint\ndata: {endpoint_path}\n\n"
         if namespace:
             yield f"event: namespace\ndata: {namespace}\n\n"
 
