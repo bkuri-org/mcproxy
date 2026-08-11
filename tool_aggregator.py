@@ -8,6 +8,7 @@ normalizing tool names from upstream servers.
 from typing import Any, Dict, List, Optional
 
 from logging_config import get_logger
+from utils.tools import normalize_tool
 
 logger = get_logger(__name__)
 
@@ -111,11 +112,14 @@ def aggregate_tools(
 
     for server_name, tools in servers_tools.items():
         for tool in tools:
-            if not isinstance(tool, dict) or "name" not in tool:
+            try:
+                normalized = normalize_tool(tool)
+            except ValueError:
+                # Preserve original log-and-continue error signaling
                 logger.warning(f"Invalid tool format from server {server_name}: {tool}")
                 continue
 
-            original_name = tool["name"]
+            original_name = normalized["name"]
             prefixed_name = prefix_tool_name(server_name, original_name)
 
             if prefixed_name in seen_names:
@@ -126,8 +130,8 @@ def aggregate_tools(
 
             seen_names.add(prefixed_name)
 
-            # Create new tool dict with prefixed name
-            prefixed_tool = tool.copy()
+            # normalize_tool returns a new dict; safe to mutate directly
+            prefixed_tool = normalized
             prefixed_tool["name"] = prefixed_name
             prefixed_tool["_original_name"] = original_name
             prefixed_tool["_server"] = server_name
@@ -135,6 +139,16 @@ def aggregate_tools(
             prefixed_tool["_transformed_name"] = transform_tool_name(
                 server_name, original_name
             )
+
+    # NOTE: utils/tools.py must be created with normalize_tool(tool: dict) -> dict
+    # Contract: returns a new dict, never mutates its argument.
+    # Raises ValueError for: non-dict input, missing "name" key,
+    #   non-string "name", empty-string "name" (strictest superset of
+    #   both tool_aggregator.py and manifest/registry.py validations).
+    # Error signaling is intentionally unified to raise ValueError;
+    # callers convert to their preferred pattern (log-and-continue here,
+    # raise-or-sentinel in registry).  Each divergent rejection case has
+    #   a regression test pinned in tests/test_normalize_tool.py.
 
             aggregated.append(prefixed_tool)
 
