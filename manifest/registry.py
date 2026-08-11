@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
 from logging_config import get_logger
+from tools.utils import normalize_tool
 from utils.namespace import normalize_namespace_config
 from .errors import NamespaceInheritanceError
 
@@ -161,15 +162,13 @@ class CapabilityRegistry:
             categories: Set[str] = set()
 
             for tool in tools:
-                if not isinstance(tool, dict) or "name" not in tool:
-                    logger.warning(f"Invalid tool from {server_name}: {tool}")
+                try:
+                    tool_entry = normalize_tool(tool)
+                except (TypeError, ValueError) as exc:
+                    # Per-caller error signalling: registry.py logs and continues
+                    logger.warning(f"Invalid tool from {server_name}: {tool}: {exc}")
                     continue
 
-                tool_entry = {
-                    "name": tool.get("name"),
-                    "description": tool.get("description", ""),
-                    "inputSchema": tool.get("inputSchema", {}),
-                }
                 tool_list.append(tool_entry)
 
                 category = self._extract_category(tool)
