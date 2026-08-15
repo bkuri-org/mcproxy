@@ -191,5 +191,37 @@
       "idle_label": "idle"
     },
     "queries": []
+  },
+  "ttl_learning": {
+    "enabled": true,
+    "auto_adjust": true,
+    "minimum_sample_events": 5,
+    "strategies": {
+      "hit_rate": {
+        "weight": 40,
+        "zero_division_neutral": 0.5
+      },
+      "recency": {
+        "weight": 40
+      },
+      "cost": {
+        "weight": 20,
+        "skip_until_ewma_seeded": true
+      }
+    },
+    "renormalize_available_weights": true,
+    "ewma": {
+      "alpha": 0.3,
+      "seed_on_first_observation": true
+    },
+    "damping": {
+      "enabled": true,
+      "factor": 0.5
+    },
+    "clamping": {
+      "min_ttl_seconds": 5,
+      "max_ttl_seconds": 300
+    },
+    "learning_mode": "continuous"
   }
 }
