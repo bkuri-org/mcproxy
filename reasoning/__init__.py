@@ -38,6 +38,20 @@ from .intent import (  # noqa: E402
     normalize_intent,
     validate_intent,
 )
+from .dry_run import (  # noqa: E402
+    RESERVED_META_PARAMS,
+    DRY_RUN_BYTE_CAP,
+    UNTRUSTED_TAG,
+    TimeBucket,
+    DryRunPlan,
+    assert_no_reserved_keys,
+    build_dry_run_plan,
+    check_permissions_for_dry_run,
+    strip_reserved_params,
+    truncate_params_mirror,
+    validate_schema_for_dry_run,
+    validate_syntax,
+)
 
 logger = get_logger(__name__)
 
@@ -64,6 +78,19 @@ __all__ = [
     "classify_intent",
     "normalize_intent",
     "validate_intent",
+    # Dry-run / validate-only
+    "RESERVED_META_PARAMS",
+    "DRY_RUN_BYTE_CAP",
+    "UNTRUSTED_TAG",
+    "TimeBucket",
+    "DryRunPlan",
+    "assert_no_reserved_keys",
+    "build_dry_run_plan",
+    "check_permissions_for_dry_run",
+    "strip_reserved_params",
+    "truncate_params_mirror",
+    "validate_schema_for_dry_run",
+    "validate_syntax",
 ]
 
 # Default engine definitions — overridable in mcproxy.json reasoning.engines
@@ -99,6 +126,11 @@ DEFAULT_DANGEROUS_KEYWORDS: List[str] = [
 ]
 
 DEFAULT_COMPLEXITY_THRESHOLD: int = 3
+
+# ---------------------------------------------------------------------------
+# Shared dry-run constants (re-exported from dry_run for fast access)
+# ---------------------------------------------------------------------------
+_DRY_RUN_ENABLED: bool = True  # toggled by config reasoning.dry_run.enabled
 
 
 def _count_tool_calls(code: str) -> int:
