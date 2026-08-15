@@ -420,6 +420,24 @@ Examples:
         hot_reload_manager.set_capability_registry(cap_registry)
         logger.info("Linked capability registry for hot-reload updates")
 
+    # Initialize in-memory health tracker — per-tool latency/outcomes in a
+    # 24h rolling window using internal monotonic timestamps; execute.py
+    # feeds it (caller identity, errors redacted/truncated at record time),
+    # router.py returns soft 503 when success rate below threshold (guarded
+    # by min_samples and min_distinct_callers), inspect.py exposes metrics
+    # via include_health=true under existing inspect authz/scope check.
+    health_config = config.get("health", {})
+    from server.health import HealthTracker
+
+    health_tracker = HealthTracker(health_config)
+    app.state.health_tracker = health_tracker
+    logger.info(
+        f"Health tracker initialized: window=24h, "
+        f"success_threshold={health_config.get('success_threshold', 0.5)}, "
+        f"min_samples={health_config.get('min_samples', 10)}, "
+        f"min_distinct_callers={health_config.get('min_distinct_callers', 3)}"
+    )
+
     # Setup config reloader (hot-reload) - skip in stdio mode
     if not args.no_reload and not args.stdio:
         async def _reload_with_plugins(new_config: dict) -> None:
