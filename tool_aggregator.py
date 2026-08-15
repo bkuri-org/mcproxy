@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional
 
 from logging_config import get_logger
 from utils.tools import normalize_tool
+from utils.adaptive_timeouts import is_adaptive_timeouts_enabled, get_tool_timeout
 
 logger = get_logger(__name__)
 
@@ -101,6 +102,11 @@ def aggregate_tools(
 ) -> List[Dict[str, Any]]:
     """Aggregate tools from all servers with prefixed names.
 
+    When adaptive_timeouts.enabled is true in mcproxy.json, each tool
+    schema gets a top-level ``timeout`` field (outside inputSchema)
+    containing the current timeout estimate.  The field is omitted
+    entirely when adaptive timeouts are disabled (the default).
+
     Args:
         servers_tools: Dict mapping server name to list of tools from that server
 
@@ -109,6 +115,7 @@ def aggregate_tools(
     """
     aggregated: List[Dict[str, Any]] = []
     seen_names: set = set()
+    _adaptive = is_adaptive_timeouts_enabled()
 
     for server_name, tools in servers_tools.items():
         for tool in tools:
@@ -149,6 +156,11 @@ def aggregate_tools(
     # callers convert to their preferred pattern (log-and-continue here,
     # raise-or-sentinel in registry).  Each divergent rejection case has
     #   a regression test pinned in tests/test_normalize_tool.py.
+
+            # Expose adaptive timeout at top-level (outside inputSchema)
+            # only when the feature is enabled; omit entirely otherwise.
+            if _adaptive:
+                prefixed_tool["timeout"] = get_tool_timeout(prefixed_name)
 
             aggregated.append(prefixed_tool)
 
