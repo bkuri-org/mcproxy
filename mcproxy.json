@@ -64,6 +64,21 @@
     }
   },
   "auth": {"enabled": false},
+  "circuit_breaker": {
+    "enabled": true,
+    "failure_threshold": 5,
+    "success_threshold": 3,
+    "reset_timeout_seconds": 30,
+    "half_open_max_probes": 1,
+    "force_flags_immutable_during_flight": true,
+    "admin_api_overrides": true,
+    "instrumentation": {
+      "server_manager_stdio": true,
+      "http_backend_direct": true,
+      "exactly_one_outermost_per_server": true
+    },
+    "per_server_overrides": {}
+  },
   "adaptive_timeouts": {
     "enabled": false,
     "min_timeout": 5,
