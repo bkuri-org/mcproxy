@@ -6,6 +6,7 @@ from typing import Any, Callable, Dict, List, Optional
 from logging_config import get_logger
 
 from server.handlers.tools.fallback import FallbackSelector, FailoverExhaustedError
+from server.cache.manager import CacheManager
 
 logger = get_logger(__name__)
 
@@ -19,6 +20,7 @@ async def handle_execute(
     session_manager: Optional[Any] = None,
     tool_executor: Optional[Callable] = None,
     mcproxy_config: Optional[Dict] = None,
+    cache_manager: Optional[CacheManager] = None,
 ) -> Dict[str, Any]:
     """Handle execute meta-tool.
 
@@ -31,6 +33,7 @@ async def handle_execute(
         session_manager: Session manager instance
         tool_executor: Callable to execute tools
         mcproxy_config: MCProxy configuration dict
+        cache_manager: Optional cache manager for tool result caching
 
     Returns:
         MCP response with execution result
@@ -126,6 +129,7 @@ async def handle_execute(
             timeout_secs=timeout_secs,
             session=session,
             retries=retries,
+            cache_manager=cache_manager,
         )
 
         tool_time_ms = result.get("tool_time_ms", 0)
@@ -196,6 +200,7 @@ async def handle_trace(
     sandbox_executor: Optional[Any] = None,
     session_manager: Optional[Any] = None,
     tool_executor: Optional[Callable] = None,
+    cache_manager: Optional[CacheManager] = None,
 ) -> Dict[str, Any]:
     """Handle trace action - execute code with full call stack tracing.
 
@@ -207,6 +212,7 @@ async def handle_trace(
         sandbox_executor: Sandbox executor instance
         session_manager: Session manager instance
         tool_executor: Callable to execute tools
+        cache_manager: Optional cache manager for tool result caching
 
     Returns:
         MCP response with execution result and trace data
@@ -310,6 +316,7 @@ async def handle_trace(
             session=session,
             retries=retries,
             trace=True,  # Enable tracing
+            cache_manager=cache_manager,
         )
         exec_ms = int((time.perf_counter() - exec_start) * 1000)
         add_event(
