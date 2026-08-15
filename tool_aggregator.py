@@ -10,6 +10,11 @@ from typing import Any, Dict, List, Optional
 from logging_config import get_logger
 from utils.tools import normalize_tool
 from utils.adaptive_timeouts import is_adaptive_timeouts_enabled, get_tool_timeout
+from context_propagation import (
+    is_context_propagation_enabled,
+    is_tool_context_allowed,
+    strip_context_aliases_from_schema,
+)
 
 logger = get_logger(__name__)
 
@@ -161,6 +166,21 @@ def aggregate_tools(
             # only when the feature is enabled; omit entirely otherwise.
             if _adaptive:
                 prefixed_tool["timeout"] = get_tool_timeout(prefixed_name)
+
+            # Context propagation: strict no-op (verbatim args passthrough)
+            # when disabled so disabled deployments cannot alter existing
+            # context parameters.  When enabled, gates injection on an
+            # explicit tool allowlist plus schema check, and strips
+            # context aliases from the forwarding schema on every path.
+            if is_context_propagation_enabled():
+                allowed = is_tool_context_allowed(prefixed_name, prefixed_tool)
+                prefixed_tool["_context_propagation_allowed"] = allowed
+                if allowed:
+                    prefixed_tool = strip_context_aliases_from_schema(
+                        prefixed_tool
+                    )
+            else:
+                prefixed_tool["_context_propagation_allowed"] = False
 
             aggregated.append(prefixed_tool)
 
