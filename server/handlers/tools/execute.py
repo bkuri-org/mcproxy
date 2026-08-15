@@ -6,6 +6,7 @@ from typing import Any, Callable, Dict, List, Optional
 from logging_config import get_logger
 
 from server.handlers.tools.fallback import FallbackSelector, FailoverExhaustedError
+from server.handlers.tools.mock import MockEngine
 from server.cache.manager import CacheManager
 
 logger = get_logger(__name__)
@@ -21,6 +22,7 @@ async def handle_execute(
     tool_executor: Optional[Callable] = None,
     mcproxy_config: Optional[Dict] = None,
     cache_manager: Optional[CacheManager] = None,
+    mock_engine: Optional[MockEngine] = None,
 ) -> Dict[str, Any]:
     """Handle execute meta-tool.
 
@@ -34,6 +36,7 @@ async def handle_execute(
         tool_executor: Callable to execute tools
         mcproxy_config: MCProxy configuration dict
         cache_manager: Optional cache manager for tool result caching
+        mock_engine: Pre-configured MockEngine instance (explicit opt-in)
 
     Returns:
         MCP response with execution result
@@ -62,6 +65,37 @@ async def handle_execute(
                 f"[EXECUTE] FallbackSelector init failed, using raw executor: {fb_err}"
             )
     # === End fallback routing ===
+
+    # === Mock engine (explicit opt-in only) ===
+    request_mock = params.get("mock") if isinstance(params.get("mock"), dict) else {}
+    mock_active = False
+
+    if tool_executor is not None:
+        # Request-level opt-in takes precedence, then pre-passed engine, then config
+        if request_mock.get("enabled") is True:
+            if mock_engine is None:
+                mock_cfg = mcproxy_config.get("mock", {}) if mcproxy_config else {}
+                mock_engine = MockEngine({**mock_cfg, **request_mock})
+            else:
+                mock_engine = mock_engine.with_overrides(request_mock)
+            mock_active = True
+            logger.info("[EXECUTE] MockEngine active (request-level opt-in)")
+        elif mock_engine is not None:
+            mock_active = True
+            logger.info("[EXECUTE] MockEngine active (pre-configured, explicit opt-in)")
+        elif mcproxy_config is not None and mcproxy_config.get("mock", {}).get("enabled", False) is True:
+            try:
+                mock_engine = MockEngine(mcproxy_config["mock"])
+                mock_active = True
+                logger.info("[EXECUTE] MockEngine active (config-level opt-in)")
+            except Exception as mock_init_err:
+                logger.warning(
+                    f"[EXECUTE] MockEngine init from config failed, skipping: {mock_init_err}"
+                )
+
+        if mock_active and mock_engine is not None:
+            tool_executor = mock_engine.wrap(tool_executor)
+    # === End mock engine ===
 
     # === Thinking engine ===
     think_param = params.get("think")
@@ -155,6 +189,10 @@ async def handle_execute(
                 f"[SLOW_TOOL]{log_ns}{log_sess} tool_time={tool_time_ms}ms "
                 f"overhead={overhead_ms}ms - slowness is from upstream MCP server, not mcproxy"
             )
+
+        # Annotate result when mock engine intercepted execution
+        if mock_active and mock_engine is not None and mock_engine.has_intercepted():
+            result["_mocked"] = True
 
         # Include thinking output if the engine ran
         if thinking_output is not None:
