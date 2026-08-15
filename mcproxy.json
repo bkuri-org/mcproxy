@@ -75,6 +75,19 @@
     "skip_on_timeout_exception": true,
     "clamp_on_all_paths": true
   },
+  "streaming": {
+    "enabled": false,
+    "handler_module": "server.sse",
+    "max_stream_time": 300,
+    "idle_timeout": 30,
+    "kill_sequence": ["SIGTERM", "SIGKILL"],
+    "sigkill_delay_seconds": 5,
+    "reject_non_http": true,
+    "exempt_from_execution_timeout": true,
+    "authz_before_job_creation": true,
+    "disconnect_detection": ["SSEWriteError", "CancelledError", "idle_timeout"],
+    "release_sandbox_on_cancel": true
+  },
   "dispatch": {"namespace": "thinking", "fallback": "fallback"},
   "fallback": {
     "module": "fallback",
