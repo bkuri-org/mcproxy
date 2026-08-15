@@ -1,8 +1,9 @@
 # MCProxy Adapter — stdio-to-HTTP bridge
 #
-# This is intentionally *not* hardened — the adapter needs to
-# spawn arbitrary subprocesses (npx, uvx, node, python) which
-# requires shell access and a permissive environment.
+# Hardening is applied at the *runtime* level (quadlet / compose):
+#   NoNewPrivileges, DropCapability=ALL, PrivateTmp, bridge networking.
+# This image runs as a non-root user; subprocess spawning (npx, uvx,
+# node, python) is permitted via the runtime's capability allow-list.
 #
 # Build:
 #   docker build -f Dockerfile.adapter -t localhost/mcp-adapter:latest .
@@ -70,6 +71,18 @@ RUN npm install -g @perplexity-ai/mcp-server 2>&1 | tail -2
 
 # Copy adapter code
 COPY adapter.py logging_config.py /app/
+
+# Declare port for runtime port-audit (must be >= 1024)
+EXPOSE 8080
+
+# Run as non-root: grant read access to root-owned caches (npx, uv)
+RUN groupadd -r appuser && useradd -r -g appuser -d /home/appuser -m appuser \
+    && chown -R appuser:appuser /app \
+    && chmod -R a+rX /root/.npm /root/.local
+
+USER appuser
+ENV PATH="/usr/local/bin:/usr/bin:/bin:/root/.local/bin"
+ENV HOME="/home/appuser"
 
 HEALTHCHECK --interval=15s --timeout=5s --retries=3 \
     CMD curl -sf http://localhost:8080/health || exit 1
