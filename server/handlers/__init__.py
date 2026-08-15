@@ -2,14 +2,13 @@
 
 This package contains modular handlers for different aspects of MCP protocol handling:
 - tools/ subpackage: Meta-tool definitions and handlers (mcproxy tool actions)
-  - tools/__init__.py: META_TOOLS definition and exports
-  - tools/router.py: handle_tools_call() - routes to appropriate handler
+  - tools/tools.py: META_TOOLS definition and handle_tools_call()
   - tools/execute.py: handle_execute(), handle_trace() - code execution
   - tools/search.py: handle_search() - tool discovery
   - tools/inspect.py: handle_inspect() - schema inspection
   - tools/help.py: handle_help() - documentation
+  - tools/__init__.py: Re-exports from submodules for backward compatibility
 - parsing.py: Parsing utilities for code expressions
-- response.py: Response building utilities
 """
 
 import json
