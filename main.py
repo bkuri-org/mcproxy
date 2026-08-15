@@ -347,6 +347,24 @@ Examples:
         f"generation allocator active"
     )
 
+    # Initialize context propagation — strict no-op when disabled (verbatim args
+    # passthrough, disabled deployment cannot alter existing context parameters),
+    # gates injection on explicit tool allowlist plus schema check, strips
+    # context/Context/ctx aliases on every forwarding path only when enabled,
+    # enforces size limits at injection and in a call-site deep-sanitizer that
+    # affects logs only, log filter kept as defense-in-depth.
+    ctx_prop_config = config.get("context_propagation", {})
+    if ctx_prop_config.get("enabled", False):
+        from context_propagation import ContextPropagation
+
+        ctx_prop = ContextPropagation(ctx_prop_config, servers_tools=tools)
+        hot_reload_manager.call_tool = ctx_prop.wrap(hot_reload_manager.call_tool)
+        logger.info(
+            f"Context propagation enabled: allowlist={len(ctx_prop.allowed_tools)} tool(s)"
+        )
+    else:
+        logger.info("Context propagation disabled (strict no-op passthrough)")
+
     # Initialize sandbox pool for fast execution
     pool = await init_sandbox_pool(
         tool_executor=hot_reload_manager.call_tool,
