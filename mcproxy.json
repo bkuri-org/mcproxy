@@ -39,6 +39,30 @@
     "maxitrader": {"namespaces": ["thinking", "financial", "docs", "web", "!trading"]},
     "automation": {"namespaces": ["thinking", "home"]}
   },
+  "schema_migrations": {
+    "enabled": true,
+    "param_mapping": {
+      "collision_precedence": "mapped-wins"
+    },
+    "chain": {
+      "fixpoint_enabled": true,
+      "cycle_guard": true,
+      "max_iterations": 50
+    },
+    "deprecation_registry": {
+      "enabled": true,
+      "grace_period_days": 30,
+      "entries": []
+    },
+    "router_choke_point": {
+      "rewrite_before_lookup": true,
+      "blocking_audit": {
+        "enforce": true,
+        "require_via": ["router", "apply_migration"],
+        "bypass_allowed": false
+      }
+    }
+  },
   "auth": {"enabled": false},
   "dispatch": {"namespace": "thinking"}
 }
