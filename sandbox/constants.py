@@ -9,10 +9,36 @@ from typing import List
 # Constants from security.py (re-exported for backward compatibility)
 from sandbox.security import BLOCKED_BUILTINS, BLOCKED_IMPORTS, MAX_CODE_SIZE_BYTES
 
+# --- Adaptive timeout constants (used by sandbox.utils.adaptive_timeout) ---
+
+ADAPTIVE_TIMEOUT_MIN: float = 1.0
+"""Hard floor – no computed timeout may fall below this value."""
+
+ADAPTIVE_TIMEOUT_MAX: float = 120.0
+"""Hard ceiling – no computed timeout may exceed this value."""
+
+ADAPTIVE_TIMEOUT_DEFAULT: float = 30.0
+"""Cold-start fallback returned when the rolling window is empty after trim."""
+
+ADAPTIVE_TIMEOUT_WINDOW_SIZE: int = 50
+"""Number of recent non-timeout durations kept per tool."""
+
+ADAPTIVE_TIMEOUT_TRIM_PCT: float = 0.1
+"""Fraction to trim from each tail (0.1 → p10–p90, i.e. p90 trim)."""
+
+ADAPTIVE_TIMEOUT_SIGMA_MULT: float = 2.0
+"""Multiplier applied to the standard deviation of the trimmed window."""
+
 __all__ = [
     "BLOCKED_BUILTINS",
     "BLOCKED_IMPORTS",
     "MAX_CODE_SIZE_BYTES",
+    "ADAPTIVE_TIMEOUT_MIN",
+    "ADAPTIVE_TIMEOUT_MAX",
+    "ADAPTIVE_TIMEOUT_DEFAULT",
+    "ADAPTIVE_TIMEOUT_WINDOW_SIZE",
+    "ADAPTIVE_TIMEOUT_TRIM_PCT",
+    "ADAPTIVE_TIMEOUT_SIGMA_MULT",
     "get_blocked_functions",
     "get_blocked_imports",
     "get_blocked_attributes",
