@@ -64,6 +64,17 @@
     }
   },
   "auth": {"enabled": false},
+  "adaptive_timeouts": {
+    "enabled": false,
+    "min_timeout": 5,
+    "max_timeout": 300,
+    "window_size": 20,
+    "trim_percentile": 90,
+    "sigma_multiplier": 2,
+    "cold_start_timeout": 30,
+    "skip_on_timeout_exception": true,
+    "clamp_on_all_paths": true
+  },
   "dispatch": {"namespace": "thinking", "fallback": "fallback"},
   "fallback": {
     "module": "fallback",
