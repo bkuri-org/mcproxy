@@ -1,6 +1,9 @@
 """Parallel execution support for MCProxy.
 
 Provides concurrent tool execution with semaphore-based concurrency limiting.
+All results pass through the shared apply_migration() helper from
+schema_migration.py to guarantee schema consistency even when the
+parallel path bypasses the router choke point.
 """
 
 import asyncio
@@ -8,6 +11,7 @@ from dataclasses import dataclass
 from typing import Any, Awaitable, Callable, List, Optional, TypeVar
 
 from logging_config import get_logger
+from schema_migration import apply_migration
 
 logger = get_logger(__name__)
 
@@ -79,7 +83,7 @@ class ParallelExecutor:
         tasks = [run_with_semaphore(c) for c in callables]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        final_results = []
+        final_results: List[ParallelResult] = []
         for r in results:
             if isinstance(r, ParallelResult):
                 final_results.append(r)
@@ -92,6 +96,23 @@ class ParallelExecutor:
                 )
             else:
                 final_results.append(ParallelResult(status="fulfilled", result=r))
+
+        # Blocking-audit gate: every fulfilled result must pass through the
+        # shared apply_migration() helper so that the parallel path never
+        # diverges from the router's schema-migration behaviour.
+        for idx, res in enumerate(final_results):
+            if res.status == "fulfilled" and res.result is not None:
+                try:
+                    res.result = apply_migration(res.result)
+                except Exception as exc:
+                    logger.warning(
+                        "Schema migration failed on parallel result[%d]: %s",
+                        idx,
+                        exc,
+                    )
+                    res.status = "rejected"
+                    res.error = f"schema_migration: {type(exc).__name__}: {exc}"
+                    res.result = None
 
         return final_results
 
