@@ -141,3 +141,28 @@ def create_parallel_executor(
         Configured ParallelExecutor instance
     """
     return ParallelExecutor(max_concurrency=max_concurrency)
+
+
+def create_intent_classifier(
+    llm_call: Callable[[str], str],
+) -> Callable[[str], Any]:
+    """Create an intent classifier callable backed by the given LLM.
+
+    All intent logic (schema, prompts, validation, normalisation) lives in
+    ``reasoning.intent``; this thin adapter merely injects the *llm_call*
+    dependency and returns a ready-to-use ``text -> Intent`` callable.
+
+    Args:
+        llm_call: A callable that sends a prompt string to an LLM and
+            returns the raw response text.
+
+    Returns:
+        A callable that accepts a user-text string and returns an
+        ``Intent`` dataclass instance.
+    """
+    from reasoning.intent import classify_intent
+
+    def classifier(text: str) -> Any:
+        return classify_intent(text, llm_call=llm_call)
+
+    return classifier
