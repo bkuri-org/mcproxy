@@ -25,6 +25,7 @@ from server import (
     refresh_manifest,
     set_server_manager,
 )
+from schema_migration import SchemaMigrationEngine, apply_migration
 from server.admin_routes import register_admin_routes
 from server.lifecycle import init_sandbox_pool, shutdown_sandbox_pool
 from server.handlers import set_mcproxy_config
@@ -123,6 +124,16 @@ Examples:
 
         # Pass config to handlers for search settings
         set_mcproxy_config(config)
+
+        # Initialize schema migration engine (fed by schema_migrations config)
+        schema_migrations_config = config.get("schema_migrations", {})
+        migration_engine = SchemaMigrationEngine(schema_migrations_config)
+        migration_engine.initialize()
+        logger.info(
+            f"Schema migration engine initialized: "
+            f"{migration_engine.migration_count} migrations, "
+            f"{migration_engine.deprecation_count} deprecations"
+        )
     except ConfigError as e:
         logger.error(f"Failed to load configuration: {e}")
         sys.exit(1)
@@ -310,8 +321,15 @@ Examples:
         tool_executor=hot_reload_manager.call_tool,
         servers_tools=tools,
         pool=pool,
+        migration_engine=migration_engine,
     )
     logger.info("v2.0 components initialized with sandbox pool")
+
+    # Expose migration engine on app state so the router (single choke point)
+    # can rewrite params before any lookup; http_backend.py / api_parallel.py
+    # must either funnel through the router or call apply_migration() directly.
+    app.state.migration_engine = migration_engine
+    logger.info("Schema migration engine wired to router choke point")
 
     # Link capability registry to hot_reload_manager for namespace/group updates
     from server import get_capability_registry
