@@ -6,8 +6,11 @@ from typing import Any, Dict, Optional
 from manifest import CapabilityRegistry
 from logging_config import get_logger
 from server.handlers.parsing import parse_inspect_code
+from server.health import HealthTracker
 
 logger = get_logger(__name__)
+
+_health_tracker = HealthTracker()
 
 
 async def handle_inspect(
@@ -22,6 +25,7 @@ async def handle_inspect(
         msg_id: JSON-RPC message ID
         params: Inspection parameters:
             - code: Code expression like 'api.server("name")' or 'api.server("name").tool'
+            - include_health: If true, include 24h rolling health metrics (requires inspect authz)
         connection_namespace: Namespace from connection context
         capability_registry: Capability registry instance
 
@@ -31,6 +35,7 @@ async def handle_inspect(
     code = params.get("code")
     server_name = params.get("server")
     tool_name = params.get("tool")
+    include_health = params.get("include_health", False)
 
     if not server_name:
         server_name, tool_name = parse_inspect_code(code or "")
@@ -92,6 +97,11 @@ async def handle_inspect(
                         )
                         tool = dict(tool)
                         tool["description"] = description
+                    if include_health:
+                        health = _health_tracker.get_metrics(f"{server_name}:{tool_name}")
+                        if health:
+                            tool = dict(tool)
+                            tool["health"] = health
                     content = [{"type": "text", "text": json.dumps(tool)}]
                     return {
                         "jsonrpc": "2.0",
@@ -126,6 +136,10 @@ async def handle_inspect(
                 "description": description,
                 "inputSchema": tool.get("inputSchema", {}),
             }
+            if include_health:
+                health = _health_tracker.get_metrics(f"{server_name}:{tool_name_local}")
+                if health:
+                    tool_info["health"] = health
             tools_info.append(tool_info)
 
         content = [{"type": "text", "text": json.dumps(tools_info)}]
