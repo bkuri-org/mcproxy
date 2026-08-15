@@ -2,6 +2,8 @@
 
 > **Vision**: Build the most intelligent, performant, and reliable MCP gateway that anticipates agent needs, prevents abuse, and provides unmatched developer experience.
 
+> 📋 **Detailed Implementation Plan**: See [`.hermes/plans/roadmap-detailed.md`](.hermes/plans/roadmap-detailed.md) for the full 3-phase, 10-week plan with 27 assigned features, design decisions, risk register, and success criteria.
+
 **Current Version**: v4.1.0 (Auth System ✅)  
 **Next Release**: v4.2 (Security Hardening)  
 **Ultimate Goal**: 100% Ultimate MCP Gateway by v5.0
@@ -746,6 +748,14 @@ That's the promise of MCProxy v4.x.
 
 **Last Updated**: 2026-03-21  
 **Next Review**: Weekly during active development
+
+---
+
+## 📁 Detailed Planning Artifacts
+
+| Document | Location | Description |
+|----------|----------|-------------|
+| **Detailed Implementation Plan** | [`.hermes/plans/roadmap-detailed.md`](.hermes/plans/roadmap-detailed.md) | 3-phase, 10-week plan · 27 features · Design decisions · Risks · Success criteria |
 
 ---
 
