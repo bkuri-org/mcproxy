@@ -59,3 +59,30 @@ def get_namespace_servers(
         return [s for s in servers if s in all_servers]
 
     return servers
+
+
+def normalize_tool_name(name: Any) -> str:
+    """Normalize a tool name to a canonical form for rate-limit bucket keys.
+
+    Fail-closed: raises RuntimeError for any invalid input so that
+    misconfigured or malformed names never silently bypass rate limits.
+    Uses explicit RuntimeError guards instead of assertions so the
+    check survives Python's ``-O`` optimisation flag.
+
+    Args:
+        name: The tool name to normalize.
+
+    Returns:
+        Canonical lower-cased, stripped tool name string.
+
+    Raises:
+        RuntimeError: If *name* is not a non-empty string.
+    """
+    if not isinstance(name, str):
+        raise RuntimeError(
+            f"Tool name must be a string, got {type(name).__name__}"
+        )
+    normalized = name.strip().lower()
+    if not normalized:
+        raise RuntimeError("Tool name must be a non-empty string")
+    return normalized
