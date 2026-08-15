@@ -8,8 +8,11 @@ from logging_config import get_logger
 from server.handlers.tools.fallback import FallbackSelector, FailoverExhaustedError
 from server.handlers.tools.mock import MockEngine
 from server.cache.manager import CacheManager
+from server.health import HealthTracker
 
 logger = get_logger(__name__)
+
+_health_tracker = HealthTracker()
 
 
 async def handle_execute(
@@ -171,6 +174,15 @@ async def handle_execute(
         overhead_ms = execution_time_ms - tool_time_ms
         result["overhead_ms"] = overhead_ms
 
+        # Record health metrics (errors are redacted/truncated inside record())
+        _health_tracker.record(
+            tool_name=effective_namespace,
+            success=result.get("status") != "error",
+            latency_ms=tool_time_ms,
+            caller=session_id or "anonymous",
+            error=result.get("traceback"),
+        )
+
         # Detect common agent syntax mistakes and provide corrective guidance
         if result.get("status") == "error" and result.get("traceback"):
             tb = result["traceback"]
@@ -203,6 +215,13 @@ async def handle_execute(
 
     except FailoverExhaustedError as e:
         logger.error(f"[EXECUTE_ERROR] Failover exhausted (all endpoints unhealthy): {e}")
+        _health_tracker.record(
+            tool_name=effective_namespace,
+            success=False,
+            latency_ms=0,
+            caller=session_id or "anonymous",
+            error=str(e),
+        )
         return {
             "jsonrpc": "2.0",
             "id": msg_id,
@@ -213,6 +232,13 @@ async def handle_execute(
         }
     except Exception as e:
         logger.error(f"[EXECUTE_ERROR] {e}")
+        _health_tracker.record(
+            tool_name=effective_namespace,
+            success=False,
+            latency_ms=0,
+            caller=session_id or "anonymous",
+            error=str(e),
+        )
         error_msg = str(e)
         # Detect common agent mistakes and provide corrective guidance
         if "_ToolProxy.__call__()" in error_msg and "positional argument" in error_msg:
