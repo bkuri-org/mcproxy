@@ -19,6 +19,11 @@ import requests
 from logging_config import get_logger
 from utils.fuzzy_match import suggest_best_match
 
+try:
+    from schema_migration import apply_migration
+except ImportError:
+    apply_migration = None  # graceful degradation when module not yet available
+
 logger = get_logger(__name__)
 
 
@@ -491,6 +496,16 @@ class HTTPServerConnector:
     async def call_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Any:
         if not self.is_running():
             raise RuntimeError(f"HTTP server '{self.name}' is not connected")
+
+        # Apply schema migrations so this connector always sends
+        # canonical parameter names even when the caller (or router)
+        # didn't rewrite them yet.
+        if apply_migration is not None:
+            arguments = apply_migration(
+                server_name=self.name,
+                tool_name=tool_name,
+                arguments=arguments,
+            )
 
         timeout_seconds = self.tool_timeouts.get(tool_name, self.tool_timeout)
 
