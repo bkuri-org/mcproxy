@@ -1,5 +1,6 @@
 {
   "_comment": "MCProxy v2.0 Configuration - Copy to mcp-servers.json and customize",
+  "_host_alias_convention": "All container-based servers MUST use host.docker.internal (mapped to host-gateway) to reach host services. This single alias is standardized across docker-compose.yml, podman-compose.yml, and Quadlet .container files.",
   "_version": "2.0",
   
   "manifests": {
@@ -63,8 +64,8 @@
       "_extends_null_comment": "Does NOT extend public - isolated namespace for security",
       "require_auth": true,
       "_require_auth_comment": "Requires authentication header for all tool calls",
-      "allowed_origins": ["localhost", "127.0.0.1"],
-      "_allowed_origins_comment": "Only local connections allowed for system tools",
+      "allowed_origins": ["localhost", "127.0.0.1", "host.docker.internal"],
+      "_allowed_origins_comment": "Local connections and container host-gateway alias allowed for system tools",
       "servers": ["supabase", "postgres", "redis"]
     }
   },
@@ -91,7 +92,9 @@
       "enabled": true,
       "_enabled_comment": "Allow network access for servers that need it",
       "allowed_hosts": ["*"],
-      "_allowed_hosts_comment": "Restrict to specific hosts for security: ['api.github.com', 'api.openai.com']"
+      "_allowed_hosts_comment": "Restrict to specific hosts for security: ['api.github.com', 'api.openai.com']",
+      "host_alias": "host.docker.internal",
+      "_host_alias_comment": "Standardized host-reachability alias. Works in Docker (built-in) and Podman/Quadlet (extra_hosts: ['host.docker.internal:host-gateway'] in compose). NEVER use 127.0.0.1 or localhost from inside a container to reach the host."
     },
     
     "filesystem": {
@@ -125,13 +128,14 @@
     },
     
     "github": {
-      "_comment": "GitHub MCP server (Docker-based)",
+      "_comment": "GitHub MCP server (Docker-based, bridge networking, hardened)",
       "command": "docker",
       "args": [
         "run", "--rm", "-i",
         "-e", "GITHUB_TOKEN",
         "ghcr.io/github/github-mcp-server"
       ],
+      "_docker_hardening_comment": "Compose/Quadlet units enforce: NoNewPrivileges, CapDrop=ALL, PrivateTmp, bridge network, non-root image. No --network or --cap-add flags in args.",
       "env": {
         "GITHUB_TOKEN": "${GITHUB_TOKEN}",
         "_GITHUB_TOKEN_comment": "Interpolated from environment - requires .env file"
@@ -200,6 +204,7 @@
       ],
       "env": {
         "SUPABASE_URL": "${SUPABASE_URL}",
+        "_SUPABASE_URL_comment": "In .env use host.docker.internal when Supabase runs on the host, e.g. https://host.docker.internal:54321",
         "SUPABASE_ANON_KEY": "${SUPABASE_ANON_KEY}"
       },
       "namespace": "system",
