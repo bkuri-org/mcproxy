@@ -88,6 +88,28 @@
     "disconnect_detection": ["SSEWriteError", "CancelledError", "idle_timeout"],
     "release_sandbox_on_cancel": true
   },
+  "metrics": {
+    "enabled": false,
+    "facade": "NullMetrics",
+    "dependency_free": true,
+    "series_cap": 500,
+    "overflow_label": "__other__",
+    "overflow_counter": true,
+    "route": {
+      "path": "/metrics",
+      "mount_only_when_enabled": true,
+      "auth": "inherit",
+      "auth_opt_out": "none"
+    },
+    "instrument": {
+      "tool_calls": true,
+      "sessions": true,
+      "cache": true,
+      "budget": true
+    },
+    "exception_safe": true,
+    "clean_error_rendering": true
+  },
   "dispatch": {"namespace": "thinking", "fallback": "fallback"},
   "fallback": {
     "module": "fallback",
