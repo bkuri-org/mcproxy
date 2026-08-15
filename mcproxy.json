@@ -64,7 +64,39 @@
     }
   },
   "auth": {"enabled": false},
-  "dispatch": {"namespace": "thinking"},
+  "dispatch": {"namespace": "thinking", "fallback": "fallback"},
+  "fallback": {
+    "module": "fallback",
+    "strategy": "single_pass_locked",
+    "failover": {
+      "enabled": true,
+      "max_failover": 0,
+      "retryable_only": true,
+      "none_counts_against_max": true
+    },
+    "selection": {
+      "internal_loop": false,
+      "all_unhealthy_returns_none": true
+    },
+    "validation": {
+      "registry_authoritative": true,
+      "trusted_chain": true,
+      "same_tenant_scope": true,
+      "fail_closed": true
+    },
+    "health": {
+      "lifecycle_mutex": true,
+      "validate_before_start": true,
+      "join_before_start": true,
+      "probe_config_resolved_only": true,
+      "registry_verified_hosts_only": true,
+      "transport_derived": true,
+      "config_reload_mutex_shared": true
+    },
+    "metrics": {
+      "internal": true
+    }
+  },
   "cache_warmer": {
     "enabled": false,
     "protocol": "WarmingCache",
