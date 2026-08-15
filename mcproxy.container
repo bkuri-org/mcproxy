@@ -26,8 +26,9 @@ Tmpfs=/tmp:rw,noexec,nosuid,size=64m
 # Logging
 LogDriver=k8s-file
 
-# Environment
+# Environment (secrets ONLY via drop-in; MCPROXY_DATA_DIR is fail-closed DB path)
 Environment=PYTHONUNBUFFERED=1
+Environment=MCPROXY_DATA_DIR=/data
 
 # Labels
 Label=app=mcproxy
