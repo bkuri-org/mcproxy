@@ -19,10 +19,14 @@ from .execute import handle_execute, handle_trace
 from .help import handle_help
 from .inspect import handle_inspect
 from .schema_migration import apply_migration
+from server.health import HealthTracker
 from .search import handle_search
 from .tools import META_TOOLS, handle_tools_call  # re-export
 
 logger = get_logger(__name__)
+
+# Per-tool health tracker (24h rolling window, in-memory)
+_health_tracker = HealthTracker()
 
 # Tool name separator for direct calls: server__tool
 TOOL_SEPARATOR = "__"
@@ -120,6 +124,19 @@ async def _handle_direct_call(
             "jsonrpc": "2.0",
             "id": msg_id,
             "error": {"code": -32000, "message": "Tool executor not initialized"},
+        }
+
+    # Health check: soft 503 when success rate drops below threshold
+    # (requires min_samples and min_distinct_callers to prevent single-session DoS)
+    health_reason = _health_tracker.check(f"{server_name}__{tool}")
+    if health_reason:
+        return {
+            "jsonrpc": "2.0",
+            "id": msg_id,
+            "error": {
+                "code": -32003,
+                "message": f"Tool '{server_name}__{tool}' temporarily unavailable: {health_reason}",
+            },
         }
 
     try:
