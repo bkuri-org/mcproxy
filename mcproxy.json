@@ -64,5 +64,39 @@
     }
   },
   "auth": {"enabled": false},
-  "dispatch": {"namespace": "thinking"}
+  "dispatch": {"namespace": "thinking"},
+  "cache_warmer": {
+    "enabled": false,
+    "protocol": "WarmingCache",
+    "client_impl": "in-memory-stub",
+    "query_validation": {
+      "use_execute_allowlist": true,
+      "reject_unknown_server": true,
+      "reject_unknown_tool": true
+    },
+    "readiness": {
+      "await_per_server": true,
+      "transient_retries": 5,
+      "backoff_max_seconds": 30,
+      "fallback_attempts": 8,
+      "fallback_deadline_seconds": 300
+    },
+    "concurrency": {
+      "lock_on_warm_all": true,
+      "dedupe_via_current_task": true
+    },
+    "error_handling": {
+      "log_and_swallow": true
+    },
+    "admin_status": {
+      "expose_per_cycle": true,
+      "include_counts": true,
+      "include_server_names": true,
+      "include_tool_names": true,
+      "include_params": false,
+      "include_exception_text": false,
+      "idle_label": "idle"
+    },
+    "queries": []
+  }
 }
