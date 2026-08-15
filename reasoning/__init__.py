@@ -30,6 +30,14 @@ from .param_gen import (  # noqa: E402
     map_params_to_schema,
     validate_params,
 )
+from .intent import (  # noqa: E402
+    Intent,
+    IntentValidationError,
+    build_classification_prompt,
+    classify_intent,
+    normalize_intent,
+    validate_intent,
+)
 
 logger = get_logger(__name__)
 
@@ -49,6 +57,13 @@ __all__ = [
     "extract_params_from_context",
     "map_params_to_schema",
     "validate_params",
+    # Intent classification
+    "Intent",
+    "IntentValidationError",
+    "build_classification_prompt",
+    "classify_intent",
+    "normalize_intent",
+    "validate_intent",
 ]
 
 # Default engine definitions — overridable in mcproxy.json reasoning.engines
