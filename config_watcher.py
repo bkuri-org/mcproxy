@@ -127,6 +127,24 @@ def validate_security(security: Dict[str, Any]) -> None:
         interval = security["blocklist_sync_interval"]
         if not isinstance(interval, int) or interval < 60:
             raise ConfigError("security.blocklist_sync_interval must be >= 60 seconds")
+        if "blocklist_url" not in security:
+            raise ConfigError(
+                "security.blocklist_sync_interval requires blocklist_url to be set"
+            )
+
+    if "blocklist_fetch_timeout" in security:
+        timeout = security["blocklist_fetch_timeout"]
+        if not isinstance(timeout, (int, float)) or timeout <= 0:
+            raise ConfigError("security.blocklist_fetch_timeout must be a positive number")
+        if "blocklist_sync_interval" not in security:
+            raise ConfigError(
+                "security.blocklist_fetch_timeout requires blocklist_sync_interval to be set"
+            )
+        if timeout >= security["blocklist_sync_interval"]:
+            raise ConfigError(
+                "security.blocklist_fetch_timeout must be strictly less than "
+                "blocklist_sync_interval"
+            )
 
     if "allow_risky_servers" in security:
         if not isinstance(security["allow_risky_servers"], bool):
