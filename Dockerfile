@@ -48,6 +48,9 @@ COPY --chown=mcproxy:mcproxy reasoning/ reasoning/
 
 USER mcproxy
 
+# Verify non-root execution (fails build if USER directive did not take effect)
+RUN [ "$(id -u)" != "0" ] || { echo "FATAL: image must not run as root" >&2; exit 1; }
+
 EXPOSE 12010
 
 # Health check (uses curl since shell is disabled for security)
