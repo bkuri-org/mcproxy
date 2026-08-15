@@ -1,4 +1,22 @@
 {
+  "spawn_security": {
+    "noexec_trap_dir": "/usr/local/noexec",
+    "noexec_trap_owner": "root:root",
+    "noexec_trap_mode": "0555",
+    "null_symlinks": ["sh", "bash", "python", "python3", "dash", "ash"],
+    "path_prepend_scope": "spawned_mcp_server_env_only",
+    "shell_true_allowed": false,
+    "venv_python": {
+      "pinned_via": "build_time_arg",
+      "arg_name": "VENV_PYTHON",
+      "fail_fast_validation": true,
+      "path_fallback_allowed": false
+    },
+    "uv_run_allowed": false,
+    "require_absolute_interpreter": true,
+    "dockerfile_adapter_verified": true,
+    "deploy_sh_verified": true
+  },
   "servers": [
     {"name": "fear_greed_index", "type": "http", "url": "http://mcp-fear-greed-index:8080/mcp", "timeout": 120, "enabled": true},
     {"name": "sequential_thinking", "type": "http", "url": "http://mcp-sequential-thinking:8080/mcp", "timeout": 120, "enabled": true},
