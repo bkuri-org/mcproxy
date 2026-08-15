@@ -16,7 +16,8 @@ git reset --hard origin/main
 
 # 2. Rebuild container image
 echo "  → Rebuilding image..."
-sudo podman build -t localhost/mcproxy:latest . 2>&1 | tail -2
+# Build with pinned venv python (VENV_PYTHON ARG required; no PATH fallback)
+sudo podman build --build-arg VENV_PYTHON=/usr/bin/python3 -t localhost/mcproxy:latest . 2>&1 | tail -2
 
 # 3. Copy config to bind-mounted config directory
 echo "  → Syncing config..."
@@ -40,14 +41,30 @@ sudo podman run -d --replace --name mcproxy \
   -v mcproxy-data:/app/data:Z \
   -v mcproxy-cache:/app/cache:Z \
   -e PYTHONUNBUFFERED=1 \
+  -e PATH=/usr/local/noexec:$PATH \
   --security-opt no-new-privileges --cap-drop=ALL \
   --memory=512m --memory-swap=512m \
   --label "app=mcproxy" \
   --label "phase=3-bridge" \
   localhost/mcproxy:latest \
-  --log --port 12010 --host 0.0.0.0 --config /app/config/mcproxy.json
+  /usr/local/bin/mcproxy --log --port 12010 --host 0.0.0.0 --config /app/config/mcproxy.json
 
 # 5. Generate systemd service (Quadlet doesn't generate .service for mcproxy)
+# 7. Verify /usr/local/noexec noexec guard dir exists on host (created by Dockerfile,
+#    but ensure it's present for bind-mount or volume contexts)
+echo "  → Verifying noexec guard dir..."
+if ! sudo test -d /usr/local/noexec; then
+    echo "  ⚠  /usr/local/noexec missing — container image may not have been built correctly"
+    exit 1
+fi
+sudo ls -ld /usr/local/noexec
+for _bin in sh bash python python3 dash ash; do
+    if ! sudo test -L /usr/local/noexec/$_bin; then
+        echo "  ⚠  /usr/local/noexec/$_bin symlink missing"
+        exit 1
+    fi
+done
+
 echo "  → Creating systemd service..."
 sudo podman generate systemd --new --name mcproxy \
   --restart-policy=always \
@@ -60,11 +77,11 @@ MAX_RETRIES=20
 SLEEP_SEC=5
 echo "  → Verifying health..."
 for i in $(seq 1 $MAX_RETRIES); do
-    if timeout 2 bash -c "echo > /dev/tcp/localhost/12010" 2>/dev/null; then
+    if timeout 2 /bin/bash -c "echo > /dev/tcp/localhost/12010" 2>/dev/null; then
         TOOL_COUNT=$(curl -sf -X POST http://localhost:12010/message \
           -H "Content-Type: application/json" \
           -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{"full":true}}' 2>/dev/null \
-          | python3 -c "import sys,json; print(len(json.load(sys.stdin).get('result',{}).get('tools',[])))" 2>/dev/null || echo "?")
+          | /usr/bin/python3 -c "import sys,json; print(len(json.load(sys.stdin).get('result',{}).get('tools',[])))" 2>/dev/null || echo "?")
         echo "  ✓ Port 12010 open, $TOOL_COUNT tools ready (attempt $i)"
         echo ""
         echo "✅ Deployment complete! mcproxy serving on bridge (mcp-net)"
@@ -77,5 +94,7 @@ for i in $(seq 1 $MAX_RETRIES); do
 done
 
 echo "❌ mcproxy health check FAILED after $MAX_RETRIES attempts"
+echo "  → Dumping container inspect for image verification..."
+sudo podman inspect mcproxy --format='{{.Config.Entrypoint}} {{.Config.Cmd}}' 2>/dev/null || true
 sudo podman logs mcproxy 2>&1 | tail -30
 exit 1
