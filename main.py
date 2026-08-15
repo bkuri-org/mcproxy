@@ -309,6 +309,32 @@ Examples:
             f"check that adapter services are running"
         )
 
+    # Initialize compositions engine (load/execute/substitute/nest)
+    from compositions import CompositionsEngine
+
+    compositions_engine = CompositionsEngine(
+        tool_executor=hot_reload_manager.call_tool,
+        servers_tools=tools,
+    )
+    comp_tool_defs = compositions_engine.get_tool_definitions()
+    tools["__compositions__"] = comp_tool_defs
+    logger.info(
+        f"Compositions engine initialized: {len(comp_tool_defs)} tool(s)"
+    )
+
+    # Wrap tool executor so the composition tool is dispatched correctly
+    _original_call_tool = hot_reload_manager.call_tool
+
+    async def _composition_aware_call_tool(tool_name: str, arguments: dict):
+        if tool_name == "composition":
+            return await compositions_engine.execute(arguments)
+        return await _original_call_tool(tool_name, arguments)
+
+    hot_reload_manager.call_tool = _composition_aware_call_tool
+
+    # Refresh manifest to include composition tool
+    refresh_manifest(tools)
+
     # Initialize sandbox pool for fast execution
     pool = await init_sandbox_pool(
         tool_executor=hot_reload_manager.call_tool,
