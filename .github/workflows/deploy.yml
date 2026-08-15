@@ -8,7 +8,22 @@ permissions:
   contents: write
 
 jobs:
+  verify-hardening:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install container runtimes
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y podman podman-compose
+
+      - name: Verify container hardening
+        run: bash scripts/verify-hardening.sh
+
   bump-and-deploy:
+    needs: verify-hardening
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -183,5 +198,5 @@ jobs:
             -H "Authorization: Bearer ${{ secrets.NTFY_TOKEN }}" \
             -H "Title: [mcproxy] v${VERSION} deployed (${LEVEL})" \
             -H "Tags: rocket,mcproxy" \
-            -H "Click: ${{ github.server_url }}/${{ github.repository }}/releases/tag/v${VERSION}" \
+            -H "Click: ${{ github.server_url }}/${{ github.repository }}/releases/tag/v${VERSION}}" \
             -d "v${VERSION} deployed to server2" || true
