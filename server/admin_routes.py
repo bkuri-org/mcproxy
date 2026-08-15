@@ -1,6 +1,7 @@
 """Admin API endpoints for MCProxy."""
 
 import os
+import time
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -16,6 +17,9 @@ logger = get_logger(__name__)
 _audit_logger = AuditLogger()
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+
+_blocklist_refresh_last: dict[str, float] = {}
+_BLOCKLIST_REFRESH_WINDOW = 60.0
 
 
 class AgentResponse(BaseModel):
@@ -45,6 +49,14 @@ def get_agent_registry(request: Request) -> AgentRegistry:
 def get_auth_config(request: Request) -> dict:
     """Get auth config from app state."""
     return getattr(request.app.state, "auth_config", {})
+
+
+def get_blocklist_sync(request: Request):
+    """Get BlocklistSync manager from app state."""
+    sync = getattr(request.app.state, "blocklist_sync", None)
+    if not sync:
+        raise HTTPException(status_code=503, detail="Blocklist sync not configured")
+    return sync
 
 
 def admin_auth(request: Request) -> bool:
@@ -291,6 +303,33 @@ async def revoke_api_key(
             "api_key": None,
             "message": "API key revoked. Generate a new key to restore access.",
         }
+    )
+
+
+@router.post("/blocklist/refresh")
+async def refresh_blocklist(
+    request: Request,
+    sync=Depends(get_blocklist_sync),
+    _: bool = Depends(admin_auth),
+) -> JSONResponse:
+    """Force a blocklist sync refresh. Rate-limited to 1 request per 60s."""
+    client_host = request.client.host if request.client else "unknown"
+    now = time.monotonic()
+    last = _blocklist_refresh_last.get(client_host, 0.0)
+    if now - last < _BLOCKLIST_REFRESH_WINDOW:
+        remaining = _BLOCKLIST_REFRESH_WINDOW - (now - last)
+        raise HTTPException(
+            status_code=429,
+            detail=f"Rate limited. Retry after {remaining:.1f}s",
+        )
+    _blocklist_refresh_last[client_host] = now
+    try:
+        await sync.refresh()
+    except Exception as e:
+        logger.error(f"Blocklist refresh failed: {e}")
+        raise HTTPException(status_code=502, detail=f"Blocklist refresh failed: {e}")
+    return JSONResponse(
+        content={"status": "ok", "message": "Blocklist refresh triggered"}
     )
 
 
