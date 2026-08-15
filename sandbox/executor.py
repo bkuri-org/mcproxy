@@ -246,8 +246,23 @@ class SandboxExecutor:
         retries: int = 0,
         trace: bool = False,
         auth_context: Optional["AuthContext"] = None,
+        auto_parallel: bool = False,
+        max_parallel_calls: Optional[int] = None,
     ) -> Dict[str, Any]:
         """Execute user code in a uv subprocess with IPC support."""
+        if auto_parallel:
+            if not isinstance(max_parallel_calls, int) or max_parallel_calls < 1:
+                return {
+                    "status": "error",
+                    "result": None,
+                    "traceback": (
+                        "auto_parallel=True requires max_parallel_calls "
+                        "to be a positive integer enforced per-request"
+                    ),
+                    "execution_time_ms": 0,
+                    "tool_time_ms": 0,
+                }
+
         timeout = timeout_secs or self._default_timeout_secs
 
         code = self._preprocess_js_booleans(code)
@@ -294,6 +309,8 @@ class SandboxExecutor:
                 retries=retries,
                 max_concurrency=self._max_concurrency,
                 timeout=float(timeout),
+                auto_parallel=auto_parallel,
+                max_parallel_calls=max_parallel_calls,
             )
             response = {
                 "status": result.get("status", "error"),
@@ -314,7 +331,9 @@ class SandboxExecutor:
 
         try:
             stdout = await self._run_uv_subprocess_async(
-                wrapped_code, namespace, access_control, timeout, dependencies or [], auth_context
+                wrapped_code, namespace, access_control, timeout, dependencies or [], auth_context,
+                auto_parallel=auto_parallel,
+                max_parallel_calls=max_parallel_calls,
             )
 
             execution_time_ms = int((time.perf_counter() - start_time) * 1000)
@@ -422,7 +441,8 @@ class SandboxExecutor:
     # Thin delegation methods for test compatibility (tests mock these)
 
     async def _run_uv_subprocess_async(
-        self, code, namespace, access_control, timeout, dependencies, auth_context=None
+        self, code, namespace, access_control, timeout, dependencies, auth_context=None,
+        auto_parallel=False, max_parallel_calls=None,
     ):
         return await run_subprocess(
             code=code, namespace=namespace, timeout=timeout,
@@ -430,6 +450,8 @@ class SandboxExecutor:
             python_path=self._python_path,
             tool_executor=self._tool_executor,
             scope_resolver=self._scope_resolver, auth_context=auth_context,
+            auto_parallel=auto_parallel,
+            max_parallel_calls=max_parallel_calls,
         )
 
     def _build_env(self, namespace, access_control, ipc_sock_path=None):
