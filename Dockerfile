@@ -1,6 +1,10 @@
 # Build stage: install dependencies via uv
 FROM python:3.11-slim AS builder
 
+# Pin the Python interpreter path for all build/tooling steps; fail-fast if missing
+ARG VENV_PYTHON=/usr/local/bin/python3.11
+RUN [ ! -x "$VENV_PYTHON" ] && { echo "FATAL: $VENV_PYTHON not executable" >&2; exit 1; } || true
+
 WORKDIR /build
 
 # Install build tools
@@ -15,12 +19,26 @@ COPY pyproject.toml README.md .
 # Copy requirements.txt if it exists (some deps are listed here too)
 COPY requirements.txt ./
 # Install into system site-packages
-RUN uv pip install --system --no-cache .
+RUN uv pip install --system --python "$VENV_PYTHON" --no-cache .
 
 # Production stage
 FROM python:3.11-slim
 
+# Pin the Python interpreter path; fail-fast if missing; no PATH fallback
+ARG VENV_PYTHON=/usr/local/bin/python3.11
+ENV VENV_PYTHON=$VENV_PYTHON
+RUN [ ! -x "$VENV_PYTHON" ] && { echo "FATAL: $VENV_PYTHON not executable" >&2; exit 1; } || true
+
 WORKDIR /app
+
+# Create noexec trap directory: root-owned 0555 with /dev/null symlinks for common
+# shells/interpreters. PATH-prepended ONLY in spawned MCP server environments
+# (in application code), never in global PATH.
+RUN mkdir -p /usr/local/noexec && \
+    chmod 0555 /usr/local/noexec && \
+    for cmd in sh bash python python3 dash ash; do \
+        ln -sf /dev/null /usr/local/noexec/"$cmd"; \
+    done
 
 # Copy installed packages from builder
 COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
@@ -57,5 +75,5 @@ EXPOSE 12010
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
     CMD curl -sf http://localhost:12010/health || exit 1
 
-ENTRYPOINT ["python3", "main.py"]
+ENTRYPOINT ["/usr/local/bin/python3.11", "main.py"]
 CMD ["--log", "--port", "12010", "--config", "/app/config/mcproxy.json"]
