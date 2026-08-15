@@ -12,6 +12,7 @@ from utils.fuzzy_match import suggest_best_match
 from logging_config import get_logger
 from http_backend import HTTPServerConnector
 from tool_aggregator import untransform_tool_name
+from classification import enforce_server_classifications
 
 logger = get_logger(__name__)
 
@@ -133,6 +134,7 @@ class ServerManager:
 
     async def spawn_servers(self) -> None:
         servers_config = self.config.get("servers", [])
+        servers_config = enforce_server_classifications(servers_config)
         logger.info(
             f"Connecting to {len(servers_config)} servers with staggered startup..."
         )
@@ -244,7 +246,10 @@ class ServerManager:
 
     async def update_config(self, new_config: Dict[str, Any]) -> None:
         old_servers = {s["name"]: s for s in self.config.get("servers", [])}
-        new_servers = {s["name"]: s for s in new_config.get("servers", [])}
+        new_servers = {
+            s["name"]: s
+            for s in enforce_server_classifications(new_config.get("servers", []))
+        }
 
         to_remove = set(old_servers.keys()) - set(new_servers.keys())
         to_add = set(new_servers.keys()) - set(old_servers.keys())
