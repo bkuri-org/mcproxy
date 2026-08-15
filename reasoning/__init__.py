@@ -8,6 +8,10 @@ Default engines:
   - sequential:  sequential_thinking.think (step-by-step reasoning)
   - simple:      think_tool.think (simple thinking)
   - decompose:   atom_of_thoughts.think (decompose into atomic thoughts)
+
+Parameter generation:
+  - param_gen: extract NL params, map to JSON Schema with exact-then-fuzzy
+    matching, shallow validation, and missing-param prompt construction.
 """
 
 import re
@@ -16,7 +20,36 @@ from typing import Any, Callable, Dict, List, Optional
 
 from logging_config import get_logger
 
+from .param_gen import (  # noqa: E402
+    AmbiguityError,
+    ValidationError,
+    DEFAULT_FUZZY_THRESHOLD,
+    build_missing_params_prompt,
+    extract_and_bind,
+    extract_params_from_context,
+    map_params_to_schema,
+    validate_params,
+)
+
 logger = get_logger(__name__)
+
+__all__ = [
+    # Think engine
+    "ThinkEngine",
+    "build_think_prompt",
+    "DEFAULT_ENGINES",
+    "DEFAULT_DANGEROUS_KEYWORDS",
+    "DEFAULT_COMPLEXITY_THRESHOLD",
+    # Param generation
+    "AmbiguityError",
+    "ValidationError",
+    "DEFAULT_FUZZY_THRESHOLD",
+    "build_missing_params_prompt",
+    "extract_and_bind",
+    "extract_params_from_context",
+    "map_params_to_schema",
+    "validate_params",
+]
 
 # Default engine definitions — overridable in mcproxy.json reasoning.engines
 DEFAULT_ENGINES: Dict[str, Dict[str, str]] = {
