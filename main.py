@@ -29,17 +29,19 @@ from schema_migration import SchemaMigrationEngine, apply_migration
 from server.admin_routes import register_admin_routes
 from server.lifecycle import init_sandbox_pool, shutdown_sandbox_pool
 from server.handlers import set_mcproxy_config
+from plugin_system import PluginManager, PluginSystemError
 
 logger = get_logger(__name__)
 
 # Global references for graceful shutdown
 config_reloader: Optional[ConfigReloader] = None
 hot_reload_manager: Optional[HotReloadServerManager] = None
+plugin_manager: Optional[PluginManager] = None
 
 
 async def main() -> None:
     """Main application entry point."""
-    global config_reloader, hot_reload_manager
+    global config_reloader, hot_reload_manager, plugin_manager
 
     # Load environment variables from .env file
     env_file = Path(".env")
@@ -335,6 +337,16 @@ Examples:
     # Refresh manifest to include composition tool
     refresh_manifest(tools)
 
+    # Initialize plugin system — confined discovery, strict config validation,
+    # sandboxed workers with no network egress, size-capped IPC, async dispatch
+    plugin_manager = PluginManager(config, tool_executor=hot_reload_manager.call_tool)
+    await plugin_manager.discover_and_load()
+    hot_reload_manager.call_tool = plugin_manager.wrapped_execute
+    logger.info(
+        f"Plugin system initialized: {plugin_manager.plugin_count} plugin(s), "
+        f"generation allocator active"
+    )
+
     # Initialize sandbox pool for fast execution
     pool = await init_sandbox_pool(
         tool_executor=hot_reload_manager.call_tool,
@@ -367,9 +379,14 @@ Examples:
 
     # Setup config reloader (hot-reload) - skip in stdio mode
     if not args.no_reload and not args.stdio:
+        async def _reload_with_plugins(new_config: dict) -> None:
+            await hot_reload_manager.reload_config(new_config)
+            if plugin_manager:
+                await plugin_manager.reload(new_config)
+
         config_reloader = ConfigReloader(
             config_path=args.config,
-            reload_callback=hot_reload_manager.reload_config,
+            reload_callback=_reload_with_plugins,
             check_interval=args.reload_interval,
         )
         await config_reloader.start()
@@ -428,6 +445,14 @@ async def shutdown() -> None:
     # Stop all servers
     if hot_reload_manager:
         await hot_reload_manager.stop_all()
+
+    # Shutdown plugin system — deregister, instance teardown, bounded drain, force-terminate
+    if plugin_manager:
+        try:
+            await plugin_manager.shutdown()
+            logger.info("Plugin system shut down")
+        except PluginSystemError as e:
+            logger.error(f"Plugin system shutdown error: {e}")
 
     # Shutdown sandbox pool
     await shutdown_sandbox_pool()
