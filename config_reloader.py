@@ -9,6 +9,7 @@ import json
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
+from classification import enforce_server_classifications
 from config_watcher import ConfigError, load_config
 from logging_config import get_logger
 
@@ -101,6 +102,9 @@ class ConfigReloader:
 
             # Load and validate new config
             new_config = load_config(str(self.config_path))
+
+            # Enforce server classifications on reload (identical path to startup)
+            enforce_server_classifications(new_config)
 
             # Call the reload callback (handle both sync and async)
             result = self.reload_callback(new_config)
