@@ -18,6 +18,7 @@ from utils.fuzzy_match import suggest_best_match
 from .execute import handle_execute, handle_trace
 from .help import handle_help
 from .inspect import handle_inspect
+from .schema_migration import apply_migration
 from .search import handle_search
 
 logger = get_logger(__name__)
@@ -356,6 +357,24 @@ async def handle_tools_call(
     logger.info(f"[TOOL_CALL] tool={tool_name}{ns_context}{sess_context}")
 
     try:
+        # ── Schema migration choke point ──────────────────────────────
+        # All tool calls pass through here *before* any lookup or
+        # routing.  apply_migration handles:
+        #   • param mapping  (mapped-wins collision precedence)
+        #   • chain fixpoint with cycle guard
+        #   • deprecation registry + grace-period warnings
+        # The schema_migrations dict is loaded from config in main.py
+        # and threaded in via mcproxy_config.
+        schema_migrations = (mcproxy_config or {}).get("schema_migrations", {})
+        if schema_migrations:
+            tool_name, arguments = apply_migration(
+                tool_name, arguments, schema_migrations
+            )
+            logger.debug(
+                f"[SCHEMA_MIGRATION] Rewritten → tool={tool_name} "
+                f"args={list(arguments.keys())}"
+            )
+
         # Route 1: Direct tool call (server__tool pattern)
         if TOOL_SEPARATOR in tool_name and not _is_dispatch_tool(tool_name):
             return await _handle_direct_call(
@@ -367,7 +386,8 @@ async def handle_tools_call(
                 tool_executor=tool_executor,
             )
 
-        # Route 2: Dispatch meta-tool
+        # Route 2: Dispatch meta-tool (post-migration tool_name may
+        # still resolve here if a migration rewrote the name)
         canonical = tool_name.replace("mcproxy_", "") if "_" in tool_name else tool_name
         if canonical not in DISPATCH_TOOL_NAMES:
             return {
@@ -377,6 +397,10 @@ async def handle_tools_call(
                     "code": -32601,
                     "message": f"Unknown tool: {tool_name}. "
                     f"Use 'dispatch' for meta-actions or 'server__tool' for direct calls.",
+                    "data": {
+                        "_note": "tool name may have been rewritten by "
+                        "schema_migration; check schema_migrations config.",
+                    },
                 },
             }
 
