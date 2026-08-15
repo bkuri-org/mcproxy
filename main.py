@@ -365,6 +365,31 @@ Examples:
     else:
         logger.info("Context propagation disabled (strict no-op passthrough)")
 
+    # Initialize nl/ package — security-first defaults: strict-schema LLM
+    # translation treating the command as untrusted data, server-side
+    # candidate-set enforcement and confidence scoring, HMAC single-use
+    # confirm tokens (per-process secret, TTL), default-deny safe_tools
+    # allowlist gate, execution re-validated against manifest schema and
+    # routed through the direct-call authz path, nl.llm_server restricted
+    # to registered manifest aliases.
+    nl_config = config.get("nl", {})
+    if nl_config.get("enabled", False):
+        from nl import NLGateway
+
+        nl_gateway = NLGateway(
+            nl_config,
+            servers_tools=tools,
+            tool_executor=hot_reload_manager.call_tool,
+        )
+        hot_reload_manager.call_tool = nl_gateway.wrap(hot_reload_manager.call_tool)
+        logger.info(
+            f"NL gateway enabled: llm_server={nl_config.get('llm_server', '<none>')}, "
+            f"safe_tools={len(nl_gateway.safe_tools)} allowed, "
+            f"confirm_token_ttl={nl_config.get('confirm_token_ttl', 300)}s"
+        )
+    else:
+        logger.info("NL gateway disabled")
+
     # Initialize sandbox pool for fast execution
     pool = await init_sandbox_pool(
         tool_executor=hot_reload_manager.call_tool,
