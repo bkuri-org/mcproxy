@@ -7,12 +7,34 @@ from logging_config import get_logger
 
 from server.handlers.tools.fallback import FallbackSelector, FailoverExhaustedError
 from server.handlers.tools.mock import MockEngine
+from server.handlers.tools.result_limiter import apply_result_limit
 from server.cache.manager import CacheManager
 from server.health import HealthTracker
 
 logger = get_logger(__name__)
 
 _health_tracker = HealthTracker()
+
+_DEFAULT_MAX_RESULT_SIZE_BYTES = 50000
+
+
+def _resolve_max_result_bytes(
+    params: Dict,
+    mcproxy_config: Optional[Dict],
+) -> int:
+    """Extract per-call max_result_size from params, clamp to config default.
+
+    The key is removed from *params* so it is never forwarded to the MCP tool.
+    If not provided the config-level ``cache.max_result_size_bytes`` is used
+    (falling back to ``_DEFAULT_MAX_RESULT_SIZE_BYTES``).
+    """
+    per_call_max = params.pop("max_result_size", None)
+    config_default = (
+        (mcproxy_config or {}).get("cache", {}).get("max_result_size_bytes", _DEFAULT_MAX_RESULT_SIZE_BYTES)
+    )
+    if per_call_max is not None:
+        return max(0, min(int(per_call_max), int(config_default)))
+    return int(config_default)
 
 
 async def handle_execute(
@@ -56,6 +78,10 @@ async def handle_execute(
     effective_namespace = param_namespace or connection_namespace
     timeout_secs = params.get("timeout_secs")
     retries = params.get("retries", 0)
+
+    # === Result size limiting (extract & clamp before any forwarding) ===
+    max_result_bytes = _resolve_max_result_bytes(params, mcproxy_config)
+    # === End result size limiting ===
 
     # === Fallback-aware tool executor routing ===
     fallback_selector: Optional[FallbackSelector] = None
@@ -169,6 +195,10 @@ async def handle_execute(
             cache_manager=cache_manager,
         )
 
+        # === Apply result size limit ===
+        result = apply_result_limit(result, max_result_bytes)
+        # === End result size limit ===
+
         tool_time_ms = result.get("tool_time_ms", 0)
         execution_time_ms = result.get("execution_time_ms", 0)
         overhead_ms = execution_time_ms - tool_time_ms
@@ -265,6 +295,7 @@ async def handle_trace(
     session_manager: Optional[Any] = None,
     tool_executor: Optional[Callable] = None,
     cache_manager: Optional[CacheManager] = None,
+    mcproxy_config: Optional[Dict] = None,
 ) -> Dict[str, Any]:
     """Handle trace action - execute code with full call stack tracing.
 
@@ -277,6 +308,7 @@ async def handle_trace(
         session_manager: Session manager instance
         tool_executor: Callable to execute tools
         cache_manager: Optional cache manager for tool result caching
+        mcproxy_config: MCProxy configuration dict
 
     Returns:
         MCP response with execution result and trace data
@@ -316,6 +348,10 @@ async def handle_trace(
     effective_namespace = param_namespace or connection_namespace
     timeout_secs = params.get("timeout_secs")
     retries = params.get("retries", 0)
+
+    # === Result size limiting (extract & clamp before any forwarding) ===
+    max_result_bytes = _resolve_max_result_bytes(params, mcproxy_config)
+    # === End result size limiting ===
 
     add_event(
         "params_parsed",
@@ -392,6 +428,10 @@ async def handle_trace(
             },
             duration_ms=exec_ms,
         )
+
+        # === Apply result size limit ===
+        result = apply_result_limit(result, max_result_bytes)
+        # === End result size limit ===
 
         total_ms = int((time.perf_counter() - start_time) * 1000)
         add_event(
