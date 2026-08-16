@@ -2,7 +2,7 @@
 
 > A lightweight MCP gateway that aggregates multiple stdio and HTTP MCP servers through namespaced endpoints.
 
-**Status**: v5.0.3 | **Python**: 3.11+ | **Port**: 12010
+**Status**: v5.2.0 | **Python**: 3.11+ | **Port**: 12010
 
 ---
 
