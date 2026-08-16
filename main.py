@@ -37,11 +37,12 @@ logger = get_logger(__name__)
 config_reloader: Optional[ConfigReloader] = None
 hot_reload_manager: Optional[HotReloadServerManager] = None
 plugin_manager: Optional[PluginManager] = None
+think_registry: Optional["ThinkEngineRegistry"] = None
 
 
 async def main() -> None:
     """Main application entry point."""
-    global config_reloader, hot_reload_manager, plugin_manager
+    global config_reloader, hot_reload_manager, plugin_manager, think_registry
 
     # Load environment variables from .env file
     env_file = Path(".env")
@@ -347,6 +348,30 @@ Examples:
         f"generation allocator active"
     )
 
+    # Initialize pluggable think-engine registry — injection-safe auto-trigger
+    # gated on structured fields only (no free-text pattern matching), startup-
+    # validated config default, strict fail-closed think parsing, execute
+    # handler wrapped in try/except with redacted/truncated logging.
+    from think_engine import ThinkEngineRegistry, ThinkEngineConfigError
+
+    think_config = config.get("think_engine", {})
+    try:
+        think_registry = ThinkEngineRegistry(think_config)
+        think_registry.validate_config()  # startup-validated config default
+        think_registry.register_builtin_engines()  # sequential_thinking, think_tool, atom_of_thoughts
+        hot_reload_manager.call_tool = think_registry.wrap(hot_reload_manager.call_tool)
+        logger.info(
+            f"Think-engine registry initialized: {think_registry.engine_count} engine(s), "
+            f"active={think_config.get('active_engine', '<default>')}, "
+            f"auto_trigger=structured_fields_only"
+        )
+    except ThinkEngineConfigError as e:
+        logger.error(f"Think-engine config validation failed (fail-closed): {e}")
+        sys.exit(1)
+    except Exception as e:
+        logger.error(f"Think-engine initialization failed (fail-closed): {e}")
+        sys.exit(1)
+
     # Initialize context propagation — strict no-op when disabled (verbatim args
     # passthrough, disabled deployment cannot alter existing context parameters),
     # gates injection on explicit tool allowlist plus schema check, strips
@@ -444,6 +469,11 @@ Examples:
             await hot_reload_manager.reload_config(new_config)
             if plugin_manager:
                 await plugin_manager.reload(new_config)
+            # Unconditional (state-independent) scope-gated reload key-set
+            # add for think_engine — pinned by
+            # test_reload_keyset_contains_think_engine
+            if think_registry is not None:
+                await think_registry.reload(new_config.get("think_engine", {}))
 
         config_reloader = ConfigReloader(
             config_path=args.config,
@@ -506,6 +536,14 @@ async def shutdown() -> None:
     # Stop all servers
     if hot_reload_manager:
         await hot_reload_manager.stop_all()
+
+    # Shutdown think-engine registry
+    if think_registry:
+        try:
+            await think_registry.shutdown()
+            logger.info("Think-engine registry shut down")
+        except Exception as e:
+            logger.error(f"Think-engine shutdown error: {e}")
 
     # Shutdown plugin system — deregister, instance teardown, bounded drain, force-terminate
     if plugin_manager:
