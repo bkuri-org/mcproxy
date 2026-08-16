@@ -13,6 +13,7 @@ from logging_config import get_logger
 from http_backend import HTTPServerConnector
 from tool_aggregator import untransform_tool_name
 from classification import enforce_server_classifications
+from versioning import VersionRegistry
 
 logger = get_logger(__name__)
 
@@ -131,10 +132,12 @@ class ServerManager:
         self.config = config
         self.servers: Dict[str, HTTPServerConnector] = {}
         self._on_server_ready = on_server_ready
+        self._version_registry = VersionRegistry()
 
     async def spawn_servers(self) -> None:
         servers_config = self.config.get("servers", [])
         servers_config = enforce_server_classifications(servers_config)
+        self._version_registry.load(servers_config)
         logger.info(
             f"Connecting to {len(servers_config)} servers with staggered startup..."
         )
@@ -193,12 +196,21 @@ class ServerManager:
         tools: Dict[str, List[Dict[str, Any]]] = {}
         for name, server in self.servers.items():
             if server.is_running():
-                tools[name] = server.tools
+                tools[name] = self._version_registry.apply_versioning(
+                    name, server.tools
+                )
         return tools
+
+    def get_version_stats(self) -> Dict[str, Any]:
+        """Return versioning statistics (admin-gated at API layer)."""
+        return self._version_registry.get_stats()
 
     async def call_tool(
         self, server_name: str, tool_name: str, arguments: Dict[str, Any]
     ) -> Any:
+        tool_name = self._version_registry.resolve(server_name, tool_name)
+        self._version_registry.track_usage(server_name, tool_name)
+
         if server_name not in self.servers:
             raise ValueError(f"Unknown server: {server_name}")
 
@@ -245,11 +257,15 @@ class ServerManager:
             raise
 
     async def update_config(self, new_config: Dict[str, Any]) -> None:
+        self._version_registry.reset()
+
+        new_servers_list = enforce_server_classifications(
+            new_config.get("servers", [])
+        )
+        self._version_registry.load(new_servers_list)
+
         old_servers = {s["name"]: s for s in self.config.get("servers", [])}
-        new_servers = {
-            s["name"]: s
-            for s in enforce_server_classifications(new_config.get("servers", []))
-        }
+        new_servers = {s["name"]: s for s in new_servers_list}
 
         to_remove = set(old_servers.keys()) - set(new_servers.keys())
         to_add = set(new_servers.keys()) - set(old_servers.keys())
