@@ -17,6 +17,7 @@ import re
 import requests
 
 from logging_config import get_logger
+from result_limiter import apply_result_limit
 from utils.fuzzy_match import suggest_best_match
 
 try:
@@ -25,6 +26,8 @@ except ImportError:
     apply_migration = None  # graceful degradation when module not yet available
 
 logger = get_logger(__name__)
+
+_DEFAULT_MAX_RESULT_SIZE_BYTES = 50000
 
 
 def _is_response_for(msg: Dict[str, Any], req_id: str) -> bool:
@@ -497,6 +500,16 @@ class HTTPServerConnector:
         if not self.is_running():
             raise RuntimeError(f"HTTP server '{self.name}' is not connected")
 
+        # Extract per-call max_result_size from arguments before forwarding
+        # to the upstream MCP tool. Clamp to config default.
+        raw_max = arguments.pop("max_result_size", _DEFAULT_MAX_RESULT_SIZE_BYTES)
+        try:
+            max_result_size = int(raw_max)
+        except (TypeError, ValueError):
+            max_result_size = _DEFAULT_MAX_RESULT_SIZE_BYTES
+        if max_result_size < 1 or max_result_size > _DEFAULT_MAX_RESULT_SIZE_BYTES:
+            max_result_size = _DEFAULT_MAX_RESULT_SIZE_BYTES
+
         # Apply schema migrations so this connector always sends
         # canonical parameter names even when the caller (or router)
         # didn't rewrite them yet.
@@ -581,6 +594,9 @@ class HTTPServerConnector:
                 f"[CALL_TOOL_RESULT_ERROR] tool={tool_name} error={result_error[:200]}"
             )
             raise RuntimeError(f"Tool call failed: {result_error}")
+
+        # Apply cumulative byte-budget limiter before returning the result.
+        result = apply_result_limit(result, max_result_size)
 
         self._last_error = None
         logger.info(f"[CALL_TOOL_SUCCESS] tool={tool_name}")
