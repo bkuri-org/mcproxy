@@ -58,6 +58,14 @@ services:
       retries: 3
       start_period: 10s
     mem_limit: 512m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   # ── Adapter Build Helper ──────────────────────────────────────
   # Uses a permissive base (no shell/python disabling) since
@@ -72,6 +80,14 @@ services:
       - mcproxy-net
     restart: unless-stopped
     mem_limit: 256m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   # ── Adapters ──────────────────────────────────────────────────
 
