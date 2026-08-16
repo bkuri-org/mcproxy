@@ -34,7 +34,7 @@ services:
     volumes:
       - ./config:/app/config:ro
       - ./data:/app/data:rw
-      - ./cache:/app/cache:rw
+      - ./.cache:/app/.cache:rw
     environment:
       - PYTHONUNBUFFERED=1
     networks:
