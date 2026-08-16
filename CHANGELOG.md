@@ -46,6 +46,8 @@ mcproxy_sequence(
 
 ### Added
 
+- **Online blocklist**: Allowlisted HTTPS-only source with checksum-verified fetch and bundled seed; fail-closed (fatal on unreachable boot); enforced at both pre-dispatch and post-resolution
+- **Container hardening**: Shared digest pins across all images, exact-version requirements (no floating tags), enumerated minimal capabilities, and dual-runtime docker + podman smoke gates
 - **Project metadata**: Added `pyproject.toml` for proper version tracking and dependency management
 - **uv support**: Recommended setup now uses `uv` for faster dependency installation
 - **`mcproxy_sequence` single operations**: transform and write are now optional
