@@ -185,6 +185,10 @@ class ServerManager:
                 logger.error(f"Server '{server.name}' failed to connect")
             # Always run the health loop: it self-heals boot-failed servers
             # via restart_if_needed() and refreshes tools on change.
+            # ponytail: start()/health checks run sync HTTP on the event loop,
+            # so a slow-timeout upstream (e.g. 120s init timeout while down)
+            # blocks reconnects for everyone; keep per-server timeout low for
+            # flaky upstreams, or move connectors to asyncio.to_thread.
             server.start_health_check()
         except Exception as e:
             logger.error(f"Error connecting to server '{server.name}': {e}")
