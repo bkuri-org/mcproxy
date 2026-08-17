@@ -181,9 +181,11 @@ class ServerManager:
             success = await server.start()
             if success and self._on_server_ready:
                 self._on_server_ready(server.name, len(server.tools))
-                server.start_health_check()
             elif not success:
                 logger.error(f"Server '{server.name}' failed to connect")
+            # Always run the health loop: it self-heals boot-failed servers
+            # via restart_if_needed() and refreshes tools on change.
+            server.start_health_check()
         except Exception as e:
             logger.error(f"Error connecting to server '{server.name}': {e}")
 
