@@ -239,6 +239,7 @@ class HotReloadServerManager:
                     tool_timeout=server_config.get("tool_timeout"),
                     tool_timeouts=server_config.get("tool_timeouts"),
                     headers=server_config.get("headers"),
+                    on_tools_changed=self.manager._on_server_ready,
                 )
                 self.manager.servers[server.name] = server
                 asyncio.create_task(self.manager._start_server(server))

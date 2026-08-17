@@ -10,7 +10,7 @@ instead of spawning as child processes. This enables:
 import asyncio
 import json
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 import re
 
@@ -377,6 +377,7 @@ class HTTPServerConnector:
         tool_timeout: Optional[int] = None,
         tool_timeouts: Optional[Dict[str, int]] = None,
         headers: Optional[Dict[str, str]] = None,
+        on_tools_changed: Optional[Callable[[str, int], None]] = None,
     ):
         self.name = name
         self.url = url.rstrip("/")
@@ -399,6 +400,7 @@ class HTTPServerConnector:
         self._last_health_check: Optional[float] = None
         self._last_error: Optional[str] = None
         self._health_task: Optional[asyncio.Task] = None
+        self._on_tools_changed = on_tools_changed
 
     @property
     def tools(self) -> List[Dict[str, Any]]:
@@ -748,6 +750,9 @@ class HTTPServerConnector:
         self._last_health_check = time.time()
 
         if not self.is_running():
+            # Dead connector: self-heal via the existing reconnect backoff.
+            if await self.restart_if_needed():
+                self._notify_tools_changed()
             return
 
         try:
@@ -761,6 +766,10 @@ class HTTPServerConnector:
                 if self.session:
                     self.session.close()
                     self.session = None
+                return
+            # Success: the health check IS a tools/list — capture it instead
+            # of discarding it, so tool-cache staleness self-heals.
+            self._maybe_update_tools(response)
         except RuntimeError as e:
             logger.warning(f"Health check error for '{self.name}': {e}")
             self._initialized = False
@@ -768,6 +777,32 @@ class HTTPServerConnector:
             if self.session:
                 self.session.close()
                 self.session = None
+
+    def _maybe_update_tools(self, response: Dict[str, Any]) -> None:
+        new_tools = (response.get("result") or {}).get("tools")
+        if not new_tools:
+            return  # empty list = upstream mid-restart; keep last known tools
+
+        # ponytail: name-set comparison only; hash full schemas if schema
+        # drift (same names, changed inputs) ever bites.
+        old_names = sorted(t.get("name", "") for t in self._tools)
+        new_names = sorted(t.get("name", "") for t in new_tools)
+        if old_names == new_names:
+            return
+
+        logger.info(
+            f"[TOOLS_CHANGED] '{self.name}' tool list changed "
+            f"({len(old_names)} -> {len(new_names)}), refreshing manifest"
+        )
+        self.tools = new_tools
+        self._notify_tools_changed()
+
+    def _notify_tools_changed(self) -> None:
+        if self._on_tools_changed:
+            try:
+                self._on_tools_changed(self.name, len(self._tools))
+            except Exception as e:
+                logger.error(f"tools-changed callback failed for '{self.name}': {e}")
 
     def update_config(
         self,

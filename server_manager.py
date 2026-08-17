@@ -171,6 +171,7 @@ class ServerManager:
                 tool_timeout=server_config.get("tool_timeout"),
                 tool_timeouts=server_config.get("tool_timeouts"),
                 headers=server_config.get("headers"),
+                on_tools_changed=self._on_server_ready,
             )
             self.servers[server.name] = server
             asyncio.create_task(self._start_server(server))
@@ -180,6 +181,7 @@ class ServerManager:
             success = await server.start()
             if success and self._on_server_ready:
                 self._on_server_ready(server.name, len(server.tools))
+                server.start_health_check()
             elif not success:
                 logger.error(f"Server '{server.name}' failed to connect")
         except Exception as e:
