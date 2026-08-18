@@ -28,6 +28,7 @@ from server.lifecycle import (
     on_config_change as _on_config_change,
     on_server_health as _on_server_health,
     get_capability_registry,
+    get_server_manager,
     get_sandbox_executor,
     get_session_manager,
     get_tool_executor,
@@ -197,5 +198,6 @@ __all__ = [
     "on_config_change",
     "on_server_health",
     "get_capability_registry",
+    "get_server_manager",
     "configure_auth",
 ]

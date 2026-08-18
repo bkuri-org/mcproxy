@@ -20,6 +20,7 @@ from .help import handle_help
 from .inspect import handle_inspect
 from schema_migration import apply_migration
 from server.health import HealthTracker
+from .refresh import handle_refresh
 from .search import handle_search
 
 logger = get_logger(__name__)
@@ -463,6 +464,9 @@ async def handle_tools_call(
         elif action == "help":
             return handle_help(msg_id, arguments)
 
+        elif action == "refresh":
+            return await handle_refresh(msg_id, arguments)
+
         elif action == "trace":
             return await handle_trace(
                 msg_id,
@@ -481,7 +485,7 @@ async def handle_tools_call(
                 "error": {
                     "code": -32602,
                     "message": f"Unknown action: {action}. "
-                    f"Supported actions: execute, search, inspect, help, trace",
+                    f"Supported actions: execute, search, inspect, help, refresh, trace",
                 },
             }
     except Exception as e:
