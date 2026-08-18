@@ -25,24 +25,20 @@ from server import (
     refresh_manifest,
     set_server_manager,
 )
-from schema_migration import SchemaMigrationEngine, apply_migration
 from server.admin_routes import register_admin_routes
 from server.lifecycle import init_sandbox_pool, shutdown_sandbox_pool
 from server.handlers import set_mcproxy_config
-from plugin_system import PluginManager, PluginSystemError
 
 logger = get_logger(__name__)
 
 # Global references for graceful shutdown
 config_reloader: Optional[ConfigReloader] = None
 hot_reload_manager: Optional[HotReloadServerManager] = None
-plugin_manager: Optional[PluginManager] = None
-think_registry: Optional["ThinkEngineRegistry"] = None
 
 
 async def main() -> None:
     """Main application entry point."""
-    global config_reloader, hot_reload_manager, plugin_manager, think_registry
+    global config_reloader, hot_reload_manager
 
     # Load environment variables from .env file
     env_file = Path(".env")
@@ -127,16 +123,6 @@ Examples:
 
         # Pass config to handlers for search settings
         set_mcproxy_config(config)
-
-        # Initialize schema migration engine (fed by schema_migrations config)
-        schema_migrations_config = config.get("schema_migrations", {})
-        migration_engine = SchemaMigrationEngine(schema_migrations_config)
-        migration_engine.initialize()
-        logger.info(
-            f"Schema migration engine initialized: "
-            f"{migration_engine.migration_count} migrations, "
-            f"{migration_engine.deprecation_count} deprecations"
-        )
     except ConfigError as e:
         logger.error(f"Failed to load configuration: {e}")
         sys.exit(1)
@@ -312,109 +298,6 @@ Examples:
             f"check that adapter services are running"
         )
 
-    # Initialize compositions engine (load/execute/substitute/nest)
-    from compositions import CompositionsEngine
-
-    compositions_engine = CompositionsEngine(
-        tool_executor=hot_reload_manager.call_tool,
-        servers_tools=tools,
-    )
-    comp_tool_defs = compositions_engine.get_tool_definitions()
-    tools["__compositions__"] = comp_tool_defs
-    logger.info(
-        f"Compositions engine initialized: {len(comp_tool_defs)} tool(s)"
-    )
-
-    # Wrap tool executor so the composition tool is dispatched correctly
-    _original_call_tool = hot_reload_manager.call_tool
-
-    async def _composition_aware_call_tool(tool_name: str, arguments: dict):
-        if tool_name == "composition":
-            return await compositions_engine.execute(arguments)
-        return await _original_call_tool(tool_name, arguments)
-
-    hot_reload_manager.call_tool = _composition_aware_call_tool
-
-    # Refresh manifest to include composition tool
-    refresh_manifest(tools)
-
-    # Initialize plugin system — confined discovery, strict config validation,
-    # sandboxed workers with no network egress, size-capped IPC, async dispatch
-    plugin_manager = PluginManager(config, tool_executor=hot_reload_manager.call_tool)
-    await plugin_manager.discover_and_load()
-    hot_reload_manager.call_tool = plugin_manager.wrapped_execute
-    logger.info(
-        f"Plugin system initialized: {plugin_manager.plugin_count} plugin(s), "
-        f"generation allocator active"
-    )
-
-    # Initialize pluggable think-engine registry — injection-safe auto-trigger
-    # gated on structured fields only (no free-text pattern matching), startup-
-    # validated config default, strict fail-closed think parsing, execute
-    # handler wrapped in try/except with redacted/truncated logging.
-    from think_engine import ThinkEngineRegistry, ThinkEngineConfigError
-
-    think_config = config.get("think_engine", {})
-    try:
-        think_registry = ThinkEngineRegistry(think_config)
-        think_registry.validate_config()  # startup-validated config default
-        think_registry.register_builtin_engines()  # sequential_thinking, think_tool, atom_of_thoughts
-        hot_reload_manager.call_tool = think_registry.wrap(hot_reload_manager.call_tool)
-        logger.info(
-            f"Think-engine registry initialized: {think_registry.engine_count} engine(s), "
-            f"active={think_config.get('active_engine', '<default>')}, "
-            f"auto_trigger=structured_fields_only"
-        )
-    except ThinkEngineConfigError as e:
-        logger.error(f"Think-engine config validation failed (fail-closed): {e}")
-        sys.exit(1)
-    except Exception as e:
-        logger.error(f"Think-engine initialization failed (fail-closed): {e}")
-        sys.exit(1)
-
-    # Initialize context propagation — strict no-op when disabled (verbatim args
-    # passthrough, disabled deployment cannot alter existing context parameters),
-    # gates injection on explicit tool allowlist plus schema check, strips
-    # context/Context/ctx aliases on every forwarding path only when enabled,
-    # enforces size limits at injection and in a call-site deep-sanitizer that
-    # affects logs only, log filter kept as defense-in-depth.
-    ctx_prop_config = config.get("context_propagation", {})
-    if ctx_prop_config.get("enabled", False):
-        from context_propagation import ContextPropagation
-
-        ctx_prop = ContextPropagation(ctx_prop_config, servers_tools=tools)
-        hot_reload_manager.call_tool = ctx_prop.wrap(hot_reload_manager.call_tool)
-        logger.info(
-            f"Context propagation enabled: allowlist={len(ctx_prop.allowed_tools)} tool(s)"
-        )
-    else:
-        logger.info("Context propagation disabled (strict no-op passthrough)")
-
-    # Initialize nl/ package — security-first defaults: strict-schema LLM
-    # translation treating the command as untrusted data, server-side
-    # candidate-set enforcement and confidence scoring, HMAC single-use
-    # confirm tokens (per-process secret, TTL), default-deny safe_tools
-    # allowlist gate, execution re-validated against manifest schema and
-    # routed through the direct-call authz path, nl.llm_server restricted
-    # to registered manifest aliases.
-    nl_config = config.get("nl", {})
-    if nl_config.get("enabled", False):
-        from nl import NLGateway
-
-        nl_gateway = NLGateway(
-            nl_config,
-            servers_tools=tools,
-            tool_executor=hot_reload_manager.call_tool,
-        )
-        hot_reload_manager.call_tool = nl_gateway.wrap(hot_reload_manager.call_tool)
-        logger.info(
-            f"NL gateway enabled: llm_server={nl_config.get('llm_server', '<none>')}, "
-            f"safe_tools={len(nl_gateway.safe_tools)} allowed, "
-            f"confirm_token_ttl={nl_config.get('confirm_token_ttl', 300)}s"
-        )
-    else:
-        logger.info("NL gateway disabled")
-
     # Initialize sandbox pool for fast execution
     pool = await init_sandbox_pool(
         tool_executor=hot_reload_manager.call_tool,
@@ -427,15 +310,8 @@ Examples:
         tool_executor=hot_reload_manager.call_tool,
         servers_tools=tools,
         pool=pool,
-        migration_engine=migration_engine,
     )
     logger.info("v2.0 components initialized with sandbox pool")
-
-    # Expose migration engine on app state so the router (single choke point)
-    # can rewrite params before any lookup; http_backend.py / api_parallel.py
-    # must either funnel through the router or call apply_migration() directly.
-    app.state.migration_engine = migration_engine
-    logger.info("Schema migration engine wired to router choke point")
 
     # Link capability registry to hot_reload_manager for namespace/group updates
     from server import get_capability_registry
@@ -445,39 +321,11 @@ Examples:
         hot_reload_manager.set_capability_registry(cap_registry)
         logger.info("Linked capability registry for hot-reload updates")
 
-    # Initialize in-memory health tracker — per-tool latency/outcomes in a
-    # 24h rolling window using internal monotonic timestamps; execute.py
-    # feeds it (caller identity, errors redacted/truncated at record time),
-    # router.py returns soft 503 when success rate below threshold (guarded
-    # by min_samples and min_distinct_callers), inspect.py exposes metrics
-    # via include_health=true under existing inspect authz/scope check.
-    health_config = config.get("health", {})
-    from server.health import HealthTracker
-
-    health_tracker = HealthTracker(health_config)
-    app.state.health_tracker = health_tracker
-    logger.info(
-        f"Health tracker initialized: window=24h, "
-        f"success_threshold={health_config.get('success_threshold', 0.5)}, "
-        f"min_samples={health_config.get('min_samples', 10)}, "
-        f"min_distinct_callers={health_config.get('min_distinct_callers', 3)}"
-    )
-
     # Setup config reloader (hot-reload) - skip in stdio mode
     if not args.no_reload and not args.stdio:
-        async def _reload_with_plugins(new_config: dict) -> None:
-            await hot_reload_manager.reload_config(new_config)
-            if plugin_manager:
-                await plugin_manager.reload(new_config)
-            # Unconditional (state-independent) scope-gated reload key-set
-            # add for think_engine — pinned by
-            # test_reload_keyset_contains_think_engine
-            if think_registry is not None:
-                await think_registry.reload(new_config.get("think_engine", {}))
-
         config_reloader = ConfigReloader(
             config_path=args.config,
-            reload_callback=_reload_with_plugins,
+            reload_callback=hot_reload_manager.reload_config,
             check_interval=args.reload_interval,
         )
         await config_reloader.start()
@@ -536,22 +384,6 @@ async def shutdown() -> None:
     # Stop all servers
     if hot_reload_manager:
         await hot_reload_manager.stop_all()
-
-    # Shutdown think-engine registry
-    if think_registry:
-        try:
-            await think_registry.shutdown()
-            logger.info("Think-engine registry shut down")
-        except Exception as e:
-            logger.error(f"Think-engine shutdown error: {e}")
-
-    # Shutdown plugin system — deregister, instance teardown, bounded drain, force-terminate
-    if plugin_manager:
-        try:
-            await plugin_manager.shutdown()
-            logger.info("Plugin system shut down")
-        except PluginSystemError as e:
-            logger.error(f"Plugin system shutdown error: {e}")
 
     # Shutdown sandbox pool
     await shutdown_sandbox_pool()
