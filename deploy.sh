@@ -17,7 +17,7 @@ git reset --hard origin/main
 # 2. Rebuild container image
 echo "  → Rebuilding image..."
 # Build with pinned venv python (VENV_PYTHON ARG required; no PATH fallback)
-sudo podman build --build-arg VENV_PYTHON=/usr/bin/python3 -t localhost/mcproxy:latest . 2>&1 | tail -2
+sudo podman build -t localhost/mcproxy:latest . 2>&1 | tail -2
 
 # 3. Copy config to bind-mounted config directory
 echo "  → Syncing config..."
