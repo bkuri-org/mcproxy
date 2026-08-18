@@ -5,7 +5,6 @@ from typing import Any, Callable, Dict, List, Optional
 
 from logging_config import get_logger
 
-from server.handlers.tools.fallback import FallbackSelector, FailoverExhaustedError
 from server.handlers.tools.mock import MockEngine
 from server.handlers.tools.result_limiter import apply_result_limit
 from server.cache.manager import CacheManager
@@ -83,17 +82,6 @@ async def handle_execute(
     max_result_bytes = _resolve_max_result_bytes(params, mcproxy_config)
     # === End result size limiting ===
 
-    # === Fallback-aware tool executor routing ===
-    fallback_selector: Optional[FallbackSelector] = None
-    if tool_executor is not None and mcproxy_config is not None:
-        try:
-            fallback_selector = FallbackSelector(mcproxy_config)
-            tool_executor = fallback_selector.wrap(tool_executor)
-        except Exception as fb_err:
-            logger.warning(
-                f"[EXECUTE] FallbackSelector init failed, using raw executor: {fb_err}"
-            )
-    # === End fallback routing ===
 
     # === Mock engine (explicit opt-in only) ===
     request_mock = params.get("mock") if isinstance(params.get("mock"), dict) else {}
@@ -231,23 +219,6 @@ async def handle_execute(
         content = [{"type": "text", "text": json.dumps(result)}]
         return {"jsonrpc": "2.0", "id": msg_id, "result": {"content": content}}
 
-    except FailoverExhaustedError as e:
-        logger.error(f"[EXECUTE_ERROR] Failover exhausted (all endpoints unhealthy): {e}")
-        _health_tracker.record(
-            tool_name=effective_namespace,
-            success=False,
-            latency_ms=0,
-            caller=session_id or "anonymous",
-            error=str(e),
-        )
-        return {
-            "jsonrpc": "2.0",
-            "id": msg_id,
-            "error": {
-                "code": -32001,
-                "message": f"All tool endpoints unhealthy (failover exhausted): {e}",
-            },
-        }
     except Exception as e:
         logger.error(f"[EXECUTE_ERROR] {e}")
         _health_tracker.record(

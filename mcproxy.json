@@ -127,6 +127,13 @@
       "url": "http://host.docker.internal:12140/mcp",
       "timeout": 120,
       "enabled": true
+    },
+    {
+      "name": "imo",
+      "type": "http",
+      "url": "http://192.168.50.70:12140/mcp",
+      "timeout": 120,
+      "enabled": true
     }
   ],
   "blocklist_enabled": false,
