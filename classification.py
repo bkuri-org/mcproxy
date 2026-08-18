@@ -35,7 +35,33 @@ class ConfigError(Exception):
     """Raised when a server configuration violates classification rules."""
 
 
-def enforce_server_classifications(
+def enforce_server_classifications(server_name, server_config=None, blocklist_adapter=None):
+    """Shape-aware entry point.
+
+    Accepts the per-server form (server_name, server_config) or the bulk
+    forms the server_manager/config_reloader call sites use:
+      - enforce_server_classifications(servers_list) -> list
+      - enforce_server_classifications(whole_config_dict) -> dict
+    Bulk forms apply the per-server check to every entry and return the
+    input unchanged shape (offending servers are handled per policy).
+    """
+    if isinstance(server_name, list):
+        for entry in server_name:
+            if isinstance(entry, dict) and "name" in entry:
+                _enforce_one(entry["name"], entry, server_config)
+        return server_name
+    if isinstance(server_name, dict) and server_config is None:
+        # whole-config form
+        servers = server_name.get("servers", [])
+        if isinstance(servers, list):
+            for entry in servers:
+                if isinstance(entry, dict) and "name" in entry:
+                    _enforce_one(entry["name"], entry, None)
+        return server_name
+    return _enforce_one(server_name, server_config, blocklist_adapter)
+
+
+def _enforce_one(
     server_name: str,
     server_config: Dict[str, Any],
     blocklist_adapter: Optional[Callable[[str], bool]] = None,
