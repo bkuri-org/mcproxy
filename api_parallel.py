@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from typing import Any, Awaitable, Callable, List, Optional, TypeVar
 
 from logging_config import get_logger
-from result_limiter import apply_result_limit
+from server.result_limiter import apply_result_limit
 from schema_migration import apply_migration
 
 logger = get_logger(__name__)
