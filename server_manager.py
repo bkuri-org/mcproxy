@@ -137,7 +137,7 @@ class ServerManager:
     async def spawn_servers(self) -> None:
         servers_config = self.config.get("servers", [])
         servers_config = enforce_server_classifications(servers_config)
-        self._version_registry.load(servers_config)
+        self._version_registry.load(self.config.get("versioning", {}))
         logger.info(
             f"Connecting to {len(servers_config)} servers with staggered startup..."
         )
@@ -270,7 +270,7 @@ class ServerManager:
         new_servers_list = enforce_server_classifications(
             new_config.get("servers", [])
         )
-        self._version_registry.load(new_servers_list)
+        self._version_registry.load(new_config.get("versioning", {}))
 
         old_servers = {s["name"]: s for s in self.config.get("servers", [])}
         new_servers = {s["name"]: s for s in new_servers_list}
