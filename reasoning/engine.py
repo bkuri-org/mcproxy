@@ -364,3 +364,49 @@ _RELOAD_KEYS: Set[str] = set()
 _RELOAD_KEYS.add("think_engine")  # unconditional, state-independent
 
 RELOAD_KEYSET: FrozenSet[str] = frozenset(_RELOAD_KEYS)
+
+
+class ThinkEngine:
+    """Facade used by the execute handler.
+
+    # ponytail: thin adapter — execute.py expects ThinkEngine(config_dict,
+    # tool_executor) with .think()/.analyze_code()/.default_engine; the
+    # registry-based engines below predate that call shape.
+    """
+
+    def __init__(self, config=None, tool_executor=None) -> None:
+        cfg = config or {}
+        reasoning_cfg = cfg.get("reasoning", cfg) if isinstance(cfg, dict) else {}
+        self.registry = ThinkEngineRegistry()
+        self.default_engine = reasoning_cfg.get(
+            "default_engine", "sequential"
+        )
+        self._config = reasoning_cfg
+        self._tool_executor = tool_executor
+
+    def analyze_code(self, code: str) -> dict:
+        """Decide whether a think pass is warranted (auto-think)."""
+        enabled = (
+            self._config.get("auto_think", {}).get("enabled", False)
+            if isinstance(self._config, dict)
+            else False
+        )
+        keywords = ("analyze", "why", "compare", "explain", "plan", "step")
+        should = enabled and any(k in (code or "").lower() for k in keywords)
+        return {"should_think": should, "reason": "auto-think heuristic"}
+
+    async def think(
+        self,
+        code: str,
+        engine_name: str = None,
+        analysis: dict = None,
+    ) -> dict:
+        name = engine_name or self.default_engine
+        engine = self.registry._engines.get(name)
+        if engine is None:
+            return {"engine": name, "skipped": f"unknown engine '{name}'"}
+        try:
+            parsed = engine.parse(code) if hasattr(engine, "parse") else None
+        except Exception:
+            parsed = None
+        return {"engine": name, "code": code, "parsed": repr(parsed)}
