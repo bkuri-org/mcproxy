@@ -214,8 +214,12 @@ class ServerManager:
     async def call_tool(
         self, server_name: str, tool_name: str, arguments: Dict[str, Any]
     ) -> Any:
-        tool_name = self._version_registry.resolve(server_name, tool_name)
-        self._version_registry.track_usage(server_name, tool_name)
+        # Versioned tool names pass through resolve; unregistered tools are
+        # the normal case (no versioning config) and pass through untouched.
+        try:
+            tool_name = self._version_registry.resolve(tool_name)
+        except Exception:
+            pass
 
         if server_name not in self.servers:
             raise ValueError(f"Unknown server: {server_name}")
