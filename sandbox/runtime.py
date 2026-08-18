@@ -262,6 +262,15 @@ class _NamespaceAccessControl:
         self.manifest = manifest
 
     def can_access(self, namespace, target_server):
+        # Fail closed: no namespace = no tool access. Pure code still runs;
+        # only api.server(...) calls hit this check.
+        if not namespace:
+            available = ", ".join(sorted(self.manifest.namespaces.keys())) or "none"
+            return False, (
+                "No namespace specified. Pass namespace= in the dispatch call "
+                f"or an X-Namespace header. Available: {available}"
+            )
+
         allowed = self._resolve_allowed_servers(namespace)
         if target_server in allowed:
             return True, ""

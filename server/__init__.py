@@ -86,7 +86,7 @@ async def health() -> Dict[str, Any]:
             },
             "list_tools_auth": {
                 "method": "POST /sse",
-                "headers": {"X-Namespace": "dev"},
+                "headers": {"X-Namespace": "default"},
                 "body": {"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
             },
             "execute_code": {

@@ -1,245 +1,262 @@
 {
-  "spawn_security": {
-    "noexec_trap_dir": "/usr/local/noexec",
-    "noexec_trap_owner": "root:root",
-    "noexec_trap_mode": "0555",
-    "null_symlinks": ["sh", "bash", "python", "python3", "dash", "ash"],
-    "path_prepend_scope": "spawned_mcp_server_env_only",
-    "shell_true_allowed": false,
-    "venv_python": {
-      "pinned_via": "build_time_arg",
-      "arg_name": "VENV_PYTHON",
-      "fail_fast_validation": true,
-      "path_fallback_allowed": false
-    },
-    "uv_run_allowed": false,
-    "require_absolute_interpreter": true,
-    "dockerfile_adapter_verified": true,
-    "deploy_sh_verified": true
-  },
   "servers": [
-    {"name": "fear_greed_index", "type": "http", "url": "http://mcp-fear-greed-index:8080/mcp", "timeout": 120, "enabled": true},
-    {"name": "sequential_thinking", "type": "http", "url": "http://mcp-sequential-thinking:8080/mcp", "timeout": 120, "enabled": true},
-    {"name": "atom_of_thoughts", "type": "http", "url": "http://mcp-atom-of-thoughts:8080/mcp", "timeout": 120, "enabled": true},
-    {"name": "think_tool", "type": "http", "url": "http://mcp-think-tool:8080/mcp", "timeout": 120, "enabled": true},
-    {"name": "coinstats", "type": "http", "url": "http://mcp-coinstats:8080/mcp", "timeout": 120, "enabled": true},
-    {"name": "llms_txt", "type": "http", "url": "http://mcp-llms-txt:8080/mcp", "timeout": 120, "enabled": true},
-    {"name": "youtube", "type": "http", "url": "http://mcp-youtube:8080/mcp", "timeout": 120, "enabled": true},
-    {"name": "wikipedia", "type": "http", "url": "http://mcp-wikipedia:8080/mcp", "timeout": 120, "enabled": true},
-    {"name": "asset_price", "type": "http", "url": "http://mcp-asset-price:8080/mcp", "timeout": 120, "enabled": true},
-    {"name": "pure_md", "type": "http", "url": "http://mcp-pure-md:8080/mcp", "timeout": 120, "enabled": true},
-    {"name": "playwright", "type": "http", "url": "http://playwright:8931/mcp", "timeout": 120, "enabled": true},
-    {"name": "perplexity_sonar", "type": "http", "url": "http://mcp-perplexity-sonar:8080/mcp", "timeout": 120, "enabled": true},
-    {"name": "jesse", "type": "http", "url": "http://10.89.1.1:12011/mcp", "timeout": 120, "enabled": true},
-    {"name": "home_assistant", "type": "http", "url": "http://mcp-home-assistant:8080/mcp", "timeout": 120, "enabled": true},
-    {"name": "zilliqa_insights", "type": "http", "url": "https://insights.mcp.zilliqa.com/mcp", "timeout": 30, "connect_timeout": 5, "enabled": true},
-    {"name": "coinmarketcap", "type": "http", "url": "https://gateway.pipeworx.io/coinmarketcap/mcp", "timeout": 30, "connect_timeout": 5, "enabled": true},
-    {"name": "kontra", "type": "http", "url": "http://mcp-kontra:8080/mcp", "timeout": 120, "enabled": true},
-    {"name": "termux", "type": "http", "url": "http://host.docker.internal:12140/mcp", "timeout": 120, "enabled": true}
+    {
+      "name": "fear_greed_index",
+      "type": "http",
+      "url": "http://mcp-fear-greed-index:8080/mcp",
+      "timeout": 120,
+      "enabled": true
+    },
+    {
+      "name": "sequential_thinking",
+      "type": "http",
+      "url": "http://mcp-sequential-thinking:8080/mcp",
+      "timeout": 120,
+      "enabled": true
+    },
+    {
+      "name": "atom_of_thoughts",
+      "type": "http",
+      "url": "http://mcp-atom-of-thoughts:8080/mcp",
+      "timeout": 120,
+      "enabled": true
+    },
+    {
+      "name": "think_tool",
+      "type": "http",
+      "url": "http://mcp-think-tool:8080/mcp",
+      "timeout": 120,
+      "enabled": true
+    },
+    {
+      "name": "coinstats",
+      "type": "http",
+      "url": "http://mcp-coinstats:8080/mcp",
+      "timeout": 120,
+      "enabled": true
+    },
+    {
+      "name": "llms_txt",
+      "type": "http",
+      "url": "http://mcp-llms-txt:8080/mcp",
+      "timeout": 120,
+      "enabled": true
+    },
+    {
+      "name": "youtube",
+      "type": "http",
+      "url": "http://mcp-youtube:8080/mcp",
+      "timeout": 120,
+      "enabled": true
+    },
+    {
+      "name": "wikipedia",
+      "type": "http",
+      "url": "http://mcp-wikipedia:8080/mcp",
+      "timeout": 120,
+      "enabled": true
+    },
+    {
+      "name": "asset_price",
+      "type": "http",
+      "url": "http://mcp-asset-price:8080/mcp",
+      "timeout": 120,
+      "enabled": true
+    },
+    {
+      "name": "pure_md",
+      "type": "http",
+      "url": "http://mcp-pure-md:8080/mcp",
+      "timeout": 120,
+      "enabled": true
+    },
+    {
+      "name": "playwright",
+      "type": "http",
+      "url": "http://playwright:8931/mcp",
+      "timeout": 120,
+      "enabled": true
+    },
+    {
+      "name": "perplexity_sonar",
+      "type": "http",
+      "url": "http://mcp-perplexity-sonar:8080/mcp",
+      "timeout": 120,
+      "enabled": true
+    },
+    {
+      "name": "jesse",
+      "type": "http",
+      "url": "http://10.89.1.1:12011/mcp",
+      "timeout": 120,
+      "enabled": true
+    },
+    {
+      "name": "home_assistant",
+      "type": "http",
+      "url": "http://mcp-home-assistant:8080/mcp",
+      "timeout": 120,
+      "enabled": true
+    },
+    {
+      "name": "zilliqa_insights",
+      "type": "http",
+      "url": "https://insights.mcp.zilliqa.com/mcp",
+      "timeout": 30,
+      "connect_timeout": 5,
+      "enabled": true
+    },
+    {
+      "name": "coinmarketcap",
+      "type": "http",
+      "url": "https://gateway.pipeworx.io/coinmarketcap/mcp",
+      "timeout": 30,
+      "connect_timeout": 5,
+      "enabled": true
+    },
+    {
+      "name": "kontra",
+      "type": "http",
+      "url": "http://mcp-kontra:8080/mcp",
+      "timeout": 120,
+      "enabled": true
+    },
+    {
+      "name": "termux",
+      "type": "http",
+      "url": "http://host.docker.internal:12140/mcp",
+      "timeout": 120,
+      "enabled": true
+    }
   ],
   "blocklist_enabled": false,
   "search": {
     "list_brief_threshold": 500
   },
   "namespaces": {
-    "thinking": {"servers": ["sequential_thinking", "atom_of_thoughts", "think_tool", "kontra"], "isolated": false},
-    "financial": {"servers": ["asset_price", "coinstats", "fear_greed_index", "zilliqa_insights", "coinmarketcap"], "isolated": false},
-    "web": {"servers": ["wikipedia", "pure_md", "youtube"], "isolated": false},
-    "docs": {"servers": ["llms_txt"], "isolated": false},
-    "browser": {"servers": ["playwright", "perplexity_sonar"], "isolated": true},
-    "trading": {"servers": ["jesse"], "isolated": true},
-    "home": {"servers": ["home_assistant"], "isolated": false},
-    "android": {"servers": ["termux"], "isolated": false},
-    "ops": {"servers": ["fear_greed_index", "sequential_thinking", "atom_of_thoughts", "think_tool", "coinstats", "llms_txt", "youtube", "wikipedia", "asset_price", "pure_md", "playwright", "perplexity_sonar", "jesse", "home_assistant", "zilliqa_insights", "coinmarketcap", "termux"], "isolated": false}
+    "thinking": {
+      "servers": [
+        "sequential_thinking",
+        "atom_of_thoughts",
+        "think_tool",
+        "kontra"
+      ],
+      "isolated": false
+    },
+    "financial": {
+      "servers": [
+        "asset_price",
+        "coinstats",
+        "fear_greed_index",
+        "zilliqa_insights",
+        "coinmarketcap"
+      ],
+      "isolated": false
+    },
+    "web": {
+      "servers": [
+        "wikipedia",
+        "pure_md",
+        "youtube"
+      ],
+      "isolated": false
+    },
+    "docs": {
+      "servers": [
+        "llms_txt"
+      ],
+      "isolated": false
+    },
+    "browser": {
+      "servers": [
+        "playwright",
+        "perplexity_sonar"
+      ],
+      "isolated": true
+    },
+    "trading": {
+      "servers": [
+        "jesse"
+      ],
+      "isolated": true
+    },
+    "home": {
+      "servers": [
+        "home_assistant"
+      ],
+      "isolated": false
+    },
+    "android": {
+      "servers": [
+        "termux"
+      ],
+      "isolated": false
+    },
+    "ops": {
+      "servers": [
+        "fear_greed_index",
+        "sequential_thinking",
+        "atom_of_thoughts",
+        "think_tool",
+        "coinstats",
+        "llms_txt",
+        "youtube",
+        "wikipedia",
+        "asset_price",
+        "pure_md",
+        "playwright",
+        "perplexity_sonar",
+        "jesse",
+        "home_assistant",
+        "zilliqa_insights",
+        "coinmarketcap",
+        "termux"
+      ],
+      "isolated": false
+    },
+    "default": {
+      "servers": [
+        "sequential_thinking",
+        "atom_of_thoughts",
+        "think_tool",
+        "kontra",
+        "wikipedia",
+        "pure_md",
+        "youtube",
+        "llms_txt"
+      ],
+      "isolated": false
+    }
   },
   "groups": {
-    "research": {"namespaces": ["thinking", "docs", "web", "financial"]},
-    "maxitrader": {"namespaces": ["thinking", "financial", "docs", "web", "!trading"]},
-    "automation": {"namespaces": ["thinking", "home"]}
-  },
-  "schema_migrations": {
-    "enabled": true,
-    "param_mapping": {
-      "collision_precedence": "mapped-wins"
+    "research": {
+      "namespaces": [
+        "thinking",
+        "docs",
+        "web",
+        "financial"
+      ]
     },
-    "chain": {
-      "fixpoint_enabled": true,
-      "cycle_guard": true,
-      "max_iterations": 50
+    "maxitrader": {
+      "namespaces": [
+        "thinking",
+        "financial",
+        "docs",
+        "web",
+        "!trading"
+      ]
     },
-    "deprecation_registry": {
-      "enabled": true,
-      "grace_period_days": 30,
-      "entries": []
-    },
-    "router_choke_point": {
-      "rewrite_before_lookup": true,
-      "blocking_audit": {
-        "enforce": true,
-        "require_via": ["router", "apply_migration"],
-        "bypass_allowed": false
-      }
+    "automation": {
+      "namespaces": [
+        "thinking",
+        "home"
+      ]
     }
   },
-  "auth": {"enabled": false},
-  "circuit_breaker": {
-    "enabled": true,
-    "failure_threshold": 5,
-    "success_threshold": 3,
-    "reset_timeout_seconds": 30,
-    "half_open_max_probes": 1,
-    "force_flags_immutable_during_flight": true,
-    "admin_api_overrides": true,
-    "instrumentation": {
-      "server_manager_stdio": true,
-      "http_backend_direct": true,
-      "exactly_one_outermost_per_server": true
-    },
-    "per_server_overrides": {}
+  "auth": {
+    "enabled": false
   },
-  "adaptive_timeouts": {
-    "enabled": false,
-    "min_timeout": 5,
-    "max_timeout": 300,
-    "window_size": 20,
-    "trim_percentile": 90,
-    "sigma_multiplier": 2,
-    "cold_start_timeout": 30,
-    "skip_on_timeout_exception": true,
-    "clamp_on_all_paths": true
-  },
-  "streaming": {
-    "enabled": false,
-    "handler_module": "server.sse",
-    "max_stream_time": 300,
-    "idle_timeout": 30,
-    "kill_sequence": ["SIGTERM", "SIGKILL"],
-    "sigkill_delay_seconds": 5,
-    "reject_non_http": true,
-    "exempt_from_execution_timeout": true,
-    "authz_before_job_creation": true,
-    "disconnect_detection": ["SSEWriteError", "CancelledError", "idle_timeout"],
-    "release_sandbox_on_cancel": true
-  },
-  "metrics": {
-    "enabled": false,
-    "facade": "NullMetrics",
-    "dependency_free": true,
-    "series_cap": 500,
-    "overflow_label": "__other__",
-    "overflow_counter": true,
-    "route": {
-      "path": "/metrics",
-      "mount_only_when_enabled": true,
-      "auth": "inherit",
-      "auth_opt_out": "none"
-    },
-    "instrument": {
-      "tool_calls": true,
-      "sessions": true,
-      "cache": true,
-      "budget": true
-    },
-    "exception_safe": true,
-    "clean_error_rendering": true
-  },
-  "dispatch": {"namespace": "thinking", "fallback": "fallback"},
-  "fallback": {
-    "module": "fallback",
-    "strategy": "single_pass_locked",
-    "failover": {
-      "enabled": true,
-      "max_failover": 0,
-      "retryable_only": true,
-      "none_counts_against_max": true
-    },
-    "selection": {
-      "internal_loop": false,
-      "all_unhealthy_returns_none": true
-    },
-    "validation": {
-      "registry_authoritative": true,
-      "trusted_chain": true,
-      "same_tenant_scope": true,
-      "fail_closed": true
-    },
-    "health": {
-      "lifecycle_mutex": true,
-      "validate_before_start": true,
-      "join_before_start": true,
-      "probe_config_resolved_only": true,
-      "registry_verified_hosts_only": true,
-      "transport_derived": true,
-      "config_reload_mutex_shared": true
-    },
-    "metrics": {
-      "internal": true
-    }
-  },
-  "cache_warmer": {
-    "enabled": false,
-    "protocol": "WarmingCache",
-    "client_impl": "in-memory-stub",
-    "query_validation": {
-      "use_execute_allowlist": true,
-      "reject_unknown_server": true,
-      "reject_unknown_tool": true
-    },
-    "readiness": {
-      "await_per_server": true,
-      "transient_retries": 5,
-      "backoff_max_seconds": 30,
-      "fallback_attempts": 8,
-      "fallback_deadline_seconds": 300
-    },
-    "concurrency": {
-      "lock_on_warm_all": true,
-      "dedupe_via_current_task": true
-    },
-    "error_handling": {
-      "log_and_swallow": true
-    },
-    "admin_status": {
-      "expose_per_cycle": true,
-      "include_counts": true,
-      "include_server_names": true,
-      "include_tool_names": true,
-      "include_params": false,
-      "include_exception_text": false,
-      "idle_label": "idle"
-    },
-    "queries": []
-  },
-  "ttl_learning": {
-    "enabled": true,
-    "auto_adjust": true,
-    "minimum_sample_events": 5,
-    "strategies": {
-      "hit_rate": {
-        "weight": 40,
-        "zero_division_neutral": 0.5
-      },
-      "recency": {
-        "weight": 40
-      },
-      "cost": {
-        "weight": 20,
-        "skip_until_ewma_seeded": true
-      }
-    },
-    "renormalize_available_weights": true,
-    "ewma": {
-      "alpha": 0.3,
-      "seed_on_first_observation": true
-    },
-    "damping": {
-      "enabled": true,
-      "factor": 0.5
-    },
-    "clamping": {
-      "min_ttl_seconds": 5,
-      "max_ttl_seconds": 300
-    },
-    "learning_mode": "continuous"
+  "dispatch": {
+    "namespace": "thinking"
   }
 }

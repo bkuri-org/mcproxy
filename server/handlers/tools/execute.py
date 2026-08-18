@@ -170,25 +170,13 @@ async def handle_execute(
                 },
             }
 
-        if not effective_namespace:
-            return {
-                "jsonrpc": "2.0",
-                "id": msg_id,
-                "error": {
-                    "code": -32602,
-                    "message": "Missing required parameter: namespace. "
-                    "v2.0 requires explicit namespace for execute(). "
-                    "Provide in params or via X-Namespace header.",
-                },
-            }
-
         session = None
         if session_manager is not None:
             session = await session_manager.get_or_create(session_id)
 
         result = await sandbox_executor.execute(
             code,
-            namespace=effective_namespace,
+            namespace=effective_namespace or "",
             timeout_secs=timeout_secs,
             session=session,
             retries=retries,
@@ -371,16 +359,6 @@ async def handle_trace(
                 "error": {
                     "code": -32000,
                     "message": "Sandbox executor not initialized",
-                },
-            }
-
-        if not effective_namespace:
-            return {
-                "jsonrpc": "2.0",
-                "id": msg_id,
-                "error": {
-                    "code": -32602,
-                    "message": "Missing required parameter: namespace",
                 },
             }
 

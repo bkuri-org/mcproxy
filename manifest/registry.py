@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
 from logging_config import get_logger
-from tools.utils import normalize_tool
+from utils.tools import normalize_tool
 from utils.namespace import normalize_namespace_config
 from .errors import NamespaceInheritanceError
 
