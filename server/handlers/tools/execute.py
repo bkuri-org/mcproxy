@@ -5,35 +5,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 from logging_config import get_logger
 
-from server.handlers.tools.mock import MockEngine
-from server.handlers.tools.result_limiter import apply_result_limit
-from server.cache.manager import CacheManager
-from server.health import HealthTracker
-
 logger = get_logger(__name__)
-
-_health_tracker = HealthTracker()
-
-_DEFAULT_MAX_RESULT_SIZE_BYTES = 50000
-
-
-def _resolve_max_result_bytes(
-    params: Dict,
-    mcproxy_config: Optional[Dict],
-) -> int:
-    """Extract per-call max_result_size from params, clamp to config default.
-
-    The key is removed from *params* so it is never forwarded to the MCP tool.
-    If not provided the config-level ``cache.max_result_size_bytes`` is used
-    (falling back to ``_DEFAULT_MAX_RESULT_SIZE_BYTES``).
-    """
-    per_call_max = params.pop("max_result_size", None)
-    config_default = (
-        (mcproxy_config or {}).get("cache", {}).get("max_result_size_bytes", _DEFAULT_MAX_RESULT_SIZE_BYTES)
-    )
-    if per_call_max is not None:
-        return max(0, min(int(per_call_max), int(config_default)))
-    return int(config_default)
 
 
 async def handle_execute(
@@ -45,8 +17,6 @@ async def handle_execute(
     session_manager: Optional[Any] = None,
     tool_executor: Optional[Callable] = None,
     mcproxy_config: Optional[Dict] = None,
-    cache_manager: Optional[CacheManager] = None,
-    mock_engine: Optional[MockEngine] = None,
 ) -> Dict[str, Any]:
     """Handle execute meta-tool.
 
@@ -59,8 +29,6 @@ async def handle_execute(
         session_manager: Session manager instance
         tool_executor: Callable to execute tools
         mcproxy_config: MCProxy configuration dict
-        cache_manager: Optional cache manager for tool result caching
-        mock_engine: Pre-configured MockEngine instance (explicit opt-in)
 
     Returns:
         MCP response with execution result
@@ -77,42 +45,6 @@ async def handle_execute(
     effective_namespace = param_namespace or connection_namespace
     timeout_secs = params.get("timeout_secs")
     retries = params.get("retries", 0)
-
-    # === Result size limiting (extract & clamp before any forwarding) ===
-    max_result_bytes = _resolve_max_result_bytes(params, mcproxy_config)
-    # === End result size limiting ===
-
-
-    # === Mock engine (explicit opt-in only) ===
-    request_mock = params.get("mock") if isinstance(params.get("mock"), dict) else {}
-    mock_active = False
-
-    if tool_executor is not None:
-        # Request-level opt-in takes precedence, then pre-passed engine, then config
-        if request_mock.get("enabled") is True:
-            if mock_engine is None:
-                mock_cfg = mcproxy_config.get("mock", {}) if mcproxy_config else {}
-                mock_engine = MockEngine({**mock_cfg, **request_mock})
-            else:
-                mock_engine = mock_engine.with_overrides(request_mock)
-            mock_active = True
-            logger.info("[EXECUTE] MockEngine active (request-level opt-in)")
-        elif mock_engine is not None:
-            mock_active = True
-            logger.info("[EXECUTE] MockEngine active (pre-configured, explicit opt-in)")
-        elif mcproxy_config is not None and mcproxy_config.get("mock", {}).get("enabled", False) is True:
-            try:
-                mock_engine = MockEngine(mcproxy_config["mock"])
-                mock_active = True
-                logger.info("[EXECUTE] MockEngine active (config-level opt-in)")
-            except Exception as mock_init_err:
-                logger.warning(
-                    f"[EXECUTE] MockEngine init from config failed, skipping: {mock_init_err}"
-                )
-
-        if mock_active and mock_engine is not None:
-            tool_executor = mock_engine.wrap(tool_executor)
-    # === End mock engine ===
 
     # === Thinking engine ===
     think_param = params.get("think")
@@ -168,26 +100,12 @@ async def handle_execute(
             timeout_secs=timeout_secs,
             session=session,
             retries=retries,
-            cache_manager=cache_manager,
         )
-
-        # === Apply result size limit ===
-        result = apply_result_limit(result, max_result_bytes)
-        # === End result size limit ===
 
         tool_time_ms = result.get("tool_time_ms", 0)
         execution_time_ms = result.get("execution_time_ms", 0)
         overhead_ms = execution_time_ms - tool_time_ms
         result["overhead_ms"] = overhead_ms
-
-        # Record health metrics (errors are redacted/truncated inside record())
-        _health_tracker.record(
-            tool_name=effective_namespace,
-            success=result.get("status") != "error",
-            latency_ms=tool_time_ms,
-            caller=session_id or "anonymous",
-            error=result.get("traceback"),
-        )
 
         # Detect common agent syntax mistakes and provide corrective guidance
         if result.get("status") == "error" and result.get("traceback"):
@@ -208,10 +126,6 @@ async def handle_execute(
                 f"overhead={overhead_ms}ms - slowness is from upstream MCP server, not mcproxy"
             )
 
-        # Annotate result when mock engine intercepted execution
-        if mock_active and mock_engine is not None and mock_engine.has_intercepted():
-            result["_mocked"] = True
-
         # Include thinking output if the engine ran
         if thinking_output is not None:
             result["thinking"] = thinking_output
@@ -221,13 +135,6 @@ async def handle_execute(
 
     except Exception as e:
         logger.error(f"[EXECUTE_ERROR] {e}")
-        _health_tracker.record(
-            tool_name=effective_namespace,
-            success=False,
-            latency_ms=0,
-            caller=session_id or "anonymous",
-            error=str(e),
-        )
         error_msg = str(e)
         # Detect common agent mistakes and provide corrective guidance
         if "_ToolProxy.__call__()" in error_msg and "positional argument" in error_msg:
@@ -253,8 +160,6 @@ async def handle_trace(
     sandbox_executor: Optional[Any] = None,
     session_manager: Optional[Any] = None,
     tool_executor: Optional[Callable] = None,
-    cache_manager: Optional[CacheManager] = None,
-    mcproxy_config: Optional[Dict] = None,
 ) -> Dict[str, Any]:
     """Handle trace action - execute code with full call stack tracing.
 
@@ -266,8 +171,6 @@ async def handle_trace(
         sandbox_executor: Sandbox executor instance
         session_manager: Session manager instance
         tool_executor: Callable to execute tools
-        cache_manager: Optional cache manager for tool result caching
-        mcproxy_config: MCProxy configuration dict
 
     Returns:
         MCP response with execution result and trace data
@@ -307,10 +210,6 @@ async def handle_trace(
     effective_namespace = param_namespace or connection_namespace
     timeout_secs = params.get("timeout_secs")
     retries = params.get("retries", 0)
-
-    # === Result size limiting (extract & clamp before any forwarding) ===
-    max_result_bytes = _resolve_max_result_bytes(params, mcproxy_config)
-    # === End result size limiting ===
 
     add_event(
         "params_parsed",
@@ -360,12 +259,11 @@ async def handle_trace(
         exec_start = time.perf_counter()
         result = await sandbox_executor.execute(
             code,
-            namespace=effective_namespace,
+            namespace=effective_namespace or "",
             timeout_secs=timeout_secs,
             session=session,
             retries=retries,
             trace=True,  # Enable tracing
-            cache_manager=cache_manager,
         )
         exec_ms = int((time.perf_counter() - exec_start) * 1000)
         add_event(
@@ -377,10 +275,6 @@ async def handle_trace(
             },
             duration_ms=exec_ms,
         )
-
-        # === Apply result size limit ===
-        result = apply_result_limit(result, max_result_bytes)
-        # === End result size limit ===
 
         total_ms = int((time.perf_counter() - start_time) * 1000)
         add_event(
