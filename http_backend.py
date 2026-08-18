@@ -516,11 +516,11 @@ class HTTPServerConnector:
         # canonical parameter names even when the caller (or router)
         # didn't rewrite them yet.
         if apply_migration is not None:
-            arguments = apply_migration(
-                server_name=self.name,
-                tool_name=tool_name,
-                arguments=arguments,
-            )
+            try:
+                arguments = apply_migration(arguments)
+            except RuntimeError:
+                # No schema_migrations configured — identity is correct.
+                pass
 
         timeout_seconds = self.tool_timeouts.get(tool_name, self.tool_timeout)
 
