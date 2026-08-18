@@ -5,6 +5,10 @@ from typing import Callable, Dict, List, Any
 
 
 @dataclass
+class IntentValidationError(ValueError):
+    """Raised when an intent payload fails validation."""
+
+
 class Intent:
     """Schema representing a parsed user intent."""
     action: str
