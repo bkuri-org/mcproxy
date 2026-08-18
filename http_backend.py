@@ -17,7 +17,7 @@ import re
 import requests
 
 from logging_config import get_logger
-from result_limiter import apply_result_limit
+from server.result_limiter import apply_result_limit
 from utils.fuzzy_match import suggest_best_match
 
 try:
