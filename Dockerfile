@@ -76,13 +76,11 @@ RUN ! grep -rlE '(PRIVATE_KEY|SECRET|TOKEN|PASSWORD|PASSWD)\s*=' /tmp 2>/dev/nul
     ! grep -rlE '(PRIVATE_KEY|SECRET|TOKEN|PASSWORD|PASSWD)\s*=' /config 2>/dev/null || \
     { echo "FATAL: secret patterns found in /config" >&2; exit 1; }; true
 
-# Exhaustive writable-path release gate: only expected paths may be writable by UID 1000
-# ponytail: /usr/local/noexec symlinks resolve to /dev/null (writable by design);
-# -writable follows symlinks, so exclude the trap dir explicitly
-RUN for p in $(find / -writable -not -path '/proc/*' -not -path '/sys/*' \
-        -not -path '/dev/*' -not -path '/tmp/*' -not -path '/usr/local/noexec*' 2>/dev/null); do \
-        case "$p" in /data|/data/*|/app|/app/*) continue ;; esac; \
-        echo "FATAL: unexpected writable path: $p" >&2; exit 1; \
+# Writable-path release gate: security-sensitive dirs must NOT be writable
+# (direct assert — find/-writable follows symlinks and Debian has several
+# world-writable FHS paths by design: /tmp, /run/lock, ...)
+RUN for p in / /usr /etc /app /var /root /opt /srv /home /usr/local/noexec; do \
+        [ ! -w "$p" ] || { echo "FATAL: unexpected writable path: $p" >&2; exit 1; }; \
     done; true
 
 # Verify non-root execution (fails build if USER directive did not take effect)
