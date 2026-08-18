@@ -204,9 +204,7 @@ class ServerManager:
         tools: Dict[str, List[Dict[str, Any]]] = {}
         for name, server in self.servers.items():
             if server.is_running():
-                tools[name] = self._version_registry.apply_versioning(
-                    name, server.tools
-                )
+                tools[name] = list(server.tools)
         return tools
 
     def get_version_stats(self) -> Dict[str, Any]:
