@@ -77,8 +77,10 @@ RUN ! grep -rlE '(PRIVATE_KEY|SECRET|TOKEN|PASSWORD|PASSWD)\s*=' /tmp 2>/dev/nul
     { echo "FATAL: secret patterns found in /config" >&2; exit 1; }; true
 
 # Exhaustive writable-path release gate: only expected paths may be writable by UID 1000
+# ponytail: /usr/local/noexec symlinks resolve to /dev/null (writable by design);
+# -writable follows symlinks, so exclude the trap dir explicitly
 RUN for p in $(find / -writable -not -path '/proc/*' -not -path '/sys/*' \
-        -not -path '/dev/*' -not -path '/tmp/*' 2>/dev/null); do \
+        -not -path '/dev/*' -not -path '/tmp/*' -not -path '/usr/local/noexec*' 2>/dev/null); do \
         case "$p" in /data|/data/*|/app|/app/*) continue ;; esac; \
         echo "FATAL: unexpected writable path: $p" >&2; exit 1; \
     done; true
