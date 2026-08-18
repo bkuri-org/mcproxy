@@ -18,10 +18,9 @@ from utils.fuzzy_match import suggest_best_match
 from .execute import handle_execute, handle_trace
 from .help import handle_help
 from .inspect import handle_inspect
-from .schema_migration import apply_migration
+from schema_migration import apply_migration
 from server.health import HealthTracker
 from .search import handle_search
-from .tools import META_TOOLS, handle_tools_call  # re-export
 
 logger = get_logger(__name__)
 
