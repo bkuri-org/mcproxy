@@ -66,9 +66,8 @@ def normalize_tool(tool: dict) -> dict:
     # 3. Validate 'parameters'
     if "parameters" not in normalized and "inputSchema" in normalized:
         normalized["parameters"] = normalized["inputSchema"]
-    
+    if "parameters" not in normalized:
         raise ValueError("Tool validation failed: missing required key 'parameters'")
-
     parameters = normalized["parameters"]
     if not isinstance(parameters, dict):
         raise ValueError(f"Tool validation failed: 'parameters' must be a dictionary (JSON Schema), got {type(parameters).__name__}")
