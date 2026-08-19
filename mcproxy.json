@@ -233,6 +233,12 @@
         "llms_txt"
       ],
       "isolated": false
+    },
+    "memory": {
+      "servers": [
+        "imo"
+      ],
+      "isolated": false
     }
   },
   "groups": {
