@@ -3,10 +3,13 @@ Version registry with strict load-time validation, alias/default resolution,
 sanitized usage tracking, deprecation warnings, and reset-on-reload support.
 """
 
+import logging
 import re
 import warnings
 from collections import defaultdict
 from typing import Any, Callable, Dict, Optional, Set, Tuple
+
+logger = logging.getLogger(__name__)
 
 # Strict charsets for version keys, aliases, and tool names
 _NAME_CHARSET = re.compile(r'^[a-zA-Z][a-zA-Z0-9_-]*$')
@@ -272,6 +275,43 @@ class VersionRegistry:
             stats[tool_name] = tool_stats
         return stats
 
+    def mark_version(
+        self, tool_name: str, version: str, deprecated: bool = True
+    ) -> None:
+        """Dynamically mark or unmark a version as deprecated after load time.
+
+        Args:
+            tool_name: Registered tool name.
+            version: Version key that must already exist in the registry.
+            deprecated: ``True`` to deprecate, ``False`` to un-deprecate.
+
+        Raises:
+            VersionResolutionError: If the tool or version is not registered.
+        """
+        if tool_name not in self._tools:
+            raise VersionResolutionError(
+                f"Tool '{tool_name}' is not registered in the version registry"
+            )
+        versions = self._tools[tool_name]
+        if version not in versions:
+            raise VersionResolutionError(
+                f"Tool '{tool_name}': version '{version}' not found. "
+                f"Available versions: {sorted(versions.keys())}"
+            )
+        key = (tool_name, version)
+        if deprecated:
+            self._deprecated.add(key)
+            logger.warning(
+                "Tool '%s:%s' has been marked as deprecated", tool_name, version
+            )
+        else:
+            self._deprecated.discard(key)
+            logger.info(
+                "Tool '%s:%s' deprecation flag has been removed",
+                tool_name,
+                version,
+            )
+
     def reset(self) -> None:
         """Clear all registry state (called automatically on reload)."""
         self._tools.clear()
@@ -326,6 +366,14 @@ def versioned_route(registry: VersionRegistry):
                 context["canonical_version_key"] = canonical_key
                 context["versioned_tool_config"] = tool_config
 
+                # Logged warning when routing to a deprecated version
+                if (tool_name, canonical_key) in registry._deprecated:
+                    logger.warning(
+                        "Routing request to deprecated tool '%s' (version '%s')",
+                        resolved_name,
+                        canonical_key,
+                    )
+
                 # Pass the *resolved* name onward so ACL sees the final identity
                 return await next_handler(resolved_name, context, *args, **kwargs)
 
@@ -369,3 +417,19 @@ def register_admin_stats_endpoint(
             f"Cannot register stats endpoint on {type(app).__name__}: "
             "expected 'add_route' or 'get' method"
         )
+
+
+def migration_hint(old: str, new: str) -> str:
+    """Return a human-readable migration hint string for callers.
+
+    Useful in deprecation warnings or error messages to guide users toward
+    the replacement tool/version.
+
+    Args:
+        old: The deprecated tool name or ``name:version`` specifier.
+        new: The recommended replacement tool name or ``name:version`` specifier.
+
+    Returns:
+        A short hint string, e.g. ``"Migrate from 'tool:v1' to 'tool:v2'"``.
+    """
+    return f"Migrate from '{old}' to '{new}'"
