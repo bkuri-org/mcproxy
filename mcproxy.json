@@ -8,6 +8,146 @@
     "web": {"servers": ["wikipedia"], "isolated": false}
   },
   "groups": {
-    "research": {"namespaces": ["thinking", "web"]}
+    "research": {"namespaces": ["thinking", "docs", "web", "financial"]},
+    "maxitrader": {"namespaces": ["thinking", "financial", "docs", "web", "!trading"]},
+    "automation": {"namespaces": ["thinking", "home"]}
+  },
+  "schema_migrations": {
+    "enabled": true,
+    "param_mapping": {
+      "collision_precedence": "mapped-wins"
+    },
+    "chain": {
+      "fixpoint_enabled": true,
+      "cycle_guard": true,
+      "max_iterations": 50
+    },
+    "deprecation_registry": {
+      "enabled": true,
+      "grace_period_days": 30,
+      "entries": []
+    },
+    "router_choke_point": {
+      "rewrite_before_lookup": true,
+      "blocking_audit": {
+        "enforce": true,
+        "require_via": ["router", "apply_migration"],
+        "bypass_allowed": false
+      }
+    }
+  },
+  "auth": {"enabled": false},
+  "adaptive_timeouts": {
+    "enabled": false,
+    "min_timeout": 5,
+    "max_timeout": 300,
+    "window_size": 20,
+    "trim_percentile": 90,
+    "sigma_multiplier": 2,
+    "cold_start_timeout": 30,
+    "skip_on_timeout_exception": true,
+    "clamp_on_all_paths": true
+  },
+  "streaming": {
+    "enabled": false,
+    "handler_module": "server.sse",
+    "max_stream_time": 300,
+    "idle_timeout": 30,
+    "kill_sequence": ["SIGTERM", "SIGKILL"],
+    "sigkill_delay_seconds": 5,
+    "reject_non_http": true,
+    "exempt_from_execution_timeout": true,
+    "authz_before_job_creation": true,
+    "disconnect_detection": ["SSEWriteError", "CancelledError", "idle_timeout"],
+    "release_sandbox_on_cancel": true
+  },
+  "metrics": {
+    "enabled": false,
+    "facade": "NullMetrics",
+    "dependency_free": true,
+    "series_cap": 500,
+    "overflow_label": "__other__",
+    "overflow_counter": true,
+    "route": {
+      "path": "/metrics",
+      "mount_only_when_enabled": true,
+      "auth": "inherit",
+      "auth_opt_out": "none"
+    },
+    "instrument": {
+      "tool_calls": true,
+      "sessions": true,
+      "cache": true,
+      "budget": true
+    },
+    "exception_safe": true,
+    "clean_error_rendering": true
+  },
+  "dispatch": {"namespace": "thinking", "fallback": "fallback"},
+  "fallback": {
+    "module": "fallback",
+    "strategy": "single_pass_locked",
+    "failover": {
+      "enabled": true,
+      "max_failover": 0,
+      "retryable_only": true,
+      "none_counts_against_max": true
+    },
+    "selection": {
+      "internal_loop": false,
+      "all_unhealthy_returns_none": true
+    },
+    "validation": {
+      "registry_authoritative": true,
+      "trusted_chain": true,
+      "same_tenant_scope": true,
+      "fail_closed": true
+    },
+    "health": {
+      "lifecycle_mutex": true,
+      "validate_before_start": true,
+      "join_before_start": true,
+      "probe_config_resolved_only": true,
+      "registry_verified_hosts_only": true,
+      "transport_derived": true,
+      "config_reload_mutex_shared": true
+    },
+    "metrics": {
+      "internal": true
+    }
+  },
+  "cache_warmer": {
+    "enabled": false,
+    "protocol": "WarmingCache",
+    "client_impl": "in-memory-stub",
+    "query_validation": {
+      "use_execute_allowlist": true,
+      "reject_unknown_server": true,
+      "reject_unknown_tool": true
+    },
+    "readiness": {
+      "await_per_server": true,
+      "transient_retries": 5,
+      "backoff_max_seconds": 30,
+      "fallback_attempts": 8,
+      "fallback_deadline_seconds": 300
+    },
+    "concurrency": {
+      "lock_on_warm_all": true,
+      "dedupe_via_current_task": true
+    },
+    "error_handling": {
+      "log_and_swallow": true
+    },
+    "admin_status": {
+      "expose_per_cycle": true,
+      "include_counts": true,
+      "include_server_names": true,
+      "include_tool_names": true,
+      "include_params": false,
+      "include_exception_text": false,
+      "idle_label": "idle"
+    },
+    "queries": []
   }
 }
