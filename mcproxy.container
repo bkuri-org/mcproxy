@@ -7,11 +7,12 @@ Wants=network-online.target
 Image=localhost/mcproxy:latest
 ContainerName=mcproxy
 Network=mcp-net
+NetworkAlias=host.docker.internal
 PublishPort=12010:12010
 Exec=--log --port 12010 --host 0.0.0.0 --config /app/config/mcproxy.json
 
 # Persistent volumes
-Volume=/srv/containers/mcproxy/config/mcproxy.json:/app/config/mcproxy.json:ro,Z
+Volume=/srv/containers/mcproxy/config:/app/config:ro,Z
 Volume=/srv/containers/mcproxy/config/.env:/app/.env:ro,Z
 Volume=mcproxy-data:/app/data:Z
 Volume=mcproxy-cache:/app/cache:Z
@@ -20,16 +21,19 @@ Volume=mcproxy-cache:/app/cache:Z
 ReadOnly=true
 NoNewPrivileges=true
 DropCapability=ALL
+Tmpfs=/tmp:rw,noexec,nosuid,size=64m
 
 # Logging
 LogDriver=k8s-file
 
-# Environment
+# Environment (secrets ONLY via drop-in; MCPROXY_DATA_DIR is fail-closed DB path)
 Environment=PYTHONUNBUFFERED=1
+Environment=MCPROXY_DATA_DIR=/data
 
 # Labels
 Label=app=mcproxy
 Label=phase=3-bridge
+Label=hardened=true
 
 [Service]
 Restart=always

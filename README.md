@@ -2,7 +2,7 @@
 
 > A lightweight MCP gateway that aggregates multiple stdio and HTTP MCP servers through namespaced endpoints.
 
-**Status**: v5.0.3 | **Python**: 3.11+ | **Port**: 12010
+**Status**: v5.2.0 | **Python**: 3.11+ | **Port**: 12010
 
 ---
 
@@ -112,12 +112,12 @@ MCProxy supports two server types:
   },
   "groups": {
     "research": {"namespaces": ["thinking", "docs", "web", "financial"]},
-    "maxitrader": {"namespaces": ["thinking", "financial", "docs", "web", "!trading"]}
+    "maxitrader": {"namespaces": ["thinking", "financial", "docs", "web", "trading"]}
   }
 }
 ```
 
-The `!` prefix on a namespace in a group means **force-include** — isolated namespaces are normally excluded from groups unless explicitly prefixed.
+Groups are plain unions of namespaces. Listing an isolated namespace (e.g. `trading`) in a group includes it and logs a warning — the `isolated` flag only keeps a namespace off default surfaces (the bare `/sse` endpoint). A legacy `!` prefix is still accepted as a deprecated alias for plain inclusion.
 
 ### Sandbox
 
@@ -204,8 +204,10 @@ MCProxy supports three deployment modes depending on your stage:
 | Mode | Best For | Config Format | Server Config |
 |------|----------|--------------|---------------|
 | **Bare Metal** | Development & active syncing | `command`/`args` (stdio) | Root `mcproxy.json` |
-| **Docker Compose** | Full containerized stack | `url` (HTTP adapters) | `config/mcproxy.json` |
-| **Quadlet** | Single-gateway production | `url` (HTTP adapters) | `/srv/containers/mcproxy/config/mcproxy.json` |
+| **Docker Compose** | Full containerized stack | `url` (HTTP adapters) | Root `mcproxy.json` (mounted into the container) |
+| **Quadlet** | Single-gateway production | `url` (HTTP) | `/srv/containers/mcproxy/config/mcproxy.json` on the server |
+
+The repo ships **one minimal example config** (root `mcproxy.json`). The production config is maintained on the server at `/srv/containers/mcproxy/config/mcproxy.json` — it is **not** synced from this repo.
 
 ---
 
@@ -267,7 +269,7 @@ curl http://localhost:12010/health
 - The **gateway** (`docker-compose.yml` → `mcproxy` service) uses `Dockerfile` — hardened with shell/python disabled, `CapDrop=ALL`, read-only rootfs
 - **Adapters** (every `adapter-*` service) use `Dockerfile.adapter` — intentionally permissive with node, npm, uv, and python for spawning subprocesses
 - Communication is over `mcproxy-net` bridge by container name
-- The `config/mcproxy.json` uses `url` format: `"url": "http://adapter-wikipedia:12027/mcp"`
+- The gateway config uses `url` format: `"url": "http://adapter-wikipedia:12027/mcp"`
 
 **External services** (jesse at `http://host.docker.internal:12011/mcp`, not_human_search, zilliqa_insights) connect via their existing URLs.
 
@@ -284,8 +286,8 @@ sudo podman build -t localhost/mcproxy:latest .
 # 2. Create data directories
 sudo mkdir -p /srv/containers/mcproxy/{config,data,cache}
 
-# 3. Deploy config (url-based, pointing to adapter backends)
-sudo cp config/mcproxy.json /srv/containers/mcproxy/config/
+# 3. Deploy config (url-based, pointing at your MCP backends)
+sudo cp mcproxy.json /srv/containers/mcproxy/config/
 
 # 4. Deploy Quadlet
 sudo cp mcproxy.container /etc/containers/systemd/
@@ -324,7 +326,7 @@ The key difference between modes is the **config format**:
 { "url": "http://adapter-wikipedia:12027/mcp" }
 ```
 
-The root `mcproxy.json` is the bare-metal reference. The `config/mcproxy.json` is the containerized reference. Both produce the same namespace/group structure — only the server transport differs.
+The root `mcproxy.json` is a minimal example showing both formats — one HTTP server, one stdio server, two namespaces, one group. Real deployments extend it on the server; the repo copy is not a mirror of production.
 
 ---
 

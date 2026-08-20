@@ -1,6 +1,7 @@
 """Admin API endpoints for MCProxy."""
 
 import os
+import time
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -10,12 +11,16 @@ from pydantic import BaseModel
 from auth import AgentRegistry
 from auth.audit_logger import AuditLogger
 from logging_config import get_logger
+from tracing import TraceStore
 
 logger = get_logger(__name__)
 
 _audit_logger = AuditLogger()
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+
+_blocklist_refresh_last: dict[str, float] = {}
+_BLOCKLIST_REFRESH_WINDOW = 60.0
 
 
 class AgentResponse(BaseModel):
@@ -45,6 +50,22 @@ def get_agent_registry(request: Request) -> AgentRegistry:
 def get_auth_config(request: Request) -> dict:
     """Get auth config from app state."""
     return getattr(request.app.state, "auth_config", {})
+
+
+def get_blocklist_sync(request: Request):
+    """Get BlocklistSync manager from app state."""
+    sync = getattr(request.app.state, "blocklist_sync", None)
+    if not sync:
+        raise HTTPException(status_code=503, detail="Blocklist sync not configured")
+    return sync
+
+
+def get_trace_store(request: Request) -> TraceStore:
+    """Get trace store from app state."""
+    store = getattr(request.app.state, "trace_store", None)
+    if not store:
+        raise HTTPException(status_code=503, detail="Tracing not configured")
+    return store
 
 
 def admin_auth(request: Request) -> bool:
@@ -294,10 +315,65 @@ async def revoke_api_key(
     )
 
 
+@router.post("/blocklist/refresh")
+async def refresh_blocklist(
+    request: Request,
+    sync=Depends(get_blocklist_sync),
+    _: bool = Depends(admin_auth),
+) -> JSONResponse:
+    """Force a blocklist sync refresh. Rate-limited to 1 request per 60s."""
+    client_host = request.client.host if request.client else "unknown"
+    now = time.monotonic()
+    last = _blocklist_refresh_last.get(client_host, 0.0)
+    if now - last < _BLOCKLIST_REFRESH_WINDOW:
+        remaining = _BLOCKLIST_REFRESH_WINDOW - (now - last)
+        raise HTTPException(
+            status_code=429,
+            detail=f"Rate limited. Retry after {remaining:.1f}s",
+        )
+    _blocklist_refresh_last[client_host] = now
+    try:
+        await sync.refresh()
+    except Exception as e:
+        logger.error(f"Blocklist refresh failed: {e}")
+        raise HTTPException(status_code=502, detail=f"Blocklist refresh failed: {e}")
+    return JSONResponse(
+        content={"status": "ok", "message": "Blocklist refresh triggered"}
+    )
+
+
+@router.get("/traces")
+async def list_traces(
+    request: Request,
+    limit: int = 50,
+    offset: int = 0,
+    store: TraceStore = Depends(get_trace_store),
+    _: bool = Depends(admin_auth),
+) -> JSONResponse:
+    """List recent traces (read-only)."""
+    traces = store.list_traces(limit=limit, offset=offset)
+    return JSONResponse(content={"traces": traces, "count": len(traces)})
+
+
+@router.get("/traces/{trace_id}")
+async def get_trace(
+    request: Request,
+    trace_id: str,
+    store: TraceStore = Depends(get_trace_store),
+    _: bool = Depends(admin_auth),
+) -> JSONResponse:
+    """Get a single trace by ID (read-only)."""
+    trace = store.get_trace(trace_id)
+    if not trace:
+        raise HTTPException(status_code=404, detail="Trace not found")
+    return JSONResponse(content=trace)
+
+
 def register_admin_routes(
-    app, agent_registry: AgentRegistry, auth_config: dict
+    app, agent_registry: AgentRegistry, auth_config: dict, trace_store: TraceStore
 ) -> None:
     """Register admin routes with the FastAPI app."""
     app.state.agent_registry = agent_registry
     app.state.auth_config = auth_config
+    app.state.trace_store = trace_store
     app.include_router(router)

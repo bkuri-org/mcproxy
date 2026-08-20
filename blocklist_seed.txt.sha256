@@ -1,0 +1,22 @@
+# blocklist_seed.txt.sha256 — bundled seed integrity checksum
+#
+# Verification (pre-dispatch):
+#   sha256sum -c blocklist_seed.txt.sha256
+#
+# Policy: fail-closed
+#   - Mismatch or missing file: FATAL, abort boot
+#   - Unreachable online source: fall back to verified seed only
+#
+# Source: allowlisted HTTPS-only origin
+# Fetch:  checksum-verified at download time, post-resolution validated
+# Seed:   this file + blocklist_seed.txt ship together, verified pre-dispatch
+#
+# Container hardening context:
+#   - Shared digest pins across docker + podman
+#   - Exact-version image requirements (no :latest)
+#   - Enumerated minimal capabilities (no --privileged)
+#   - Dual-runtime smoke gates on build and run
+#
+# WARNING: placeholder hash (empty file). Regenerate after populating seed:
+#   sha256sum blocklist_seed.txt > blocklist_seed.txt.sha256
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  blocklist_seed.txt

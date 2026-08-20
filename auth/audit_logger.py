@@ -17,6 +17,7 @@ logger = get_logger(__name__)
 
 class AuditEventType(str, Enum):
     CREDENTIAL_ACCESS = "credential_access"
+    SECRET_ACCESS = "secret_access"
     TOKEN_ISSUED = "token_issued"
     AUTH_FAILURE = "auth_failure"
     SCOPE_DENIED = "scope_denied"
@@ -293,6 +294,43 @@ class AuditLogger:
             agent_id=agent_id,
             extra={
                 "admin_key_id": admin_key_id,
+            },
+        )
+        self._log_event(event)
+
+    def log_secret_access(
+        self,
+        principal: str,
+        scope: Optional[str],
+        outcome: str,
+        secret_key: Optional[str] = None,
+        error_message: Optional[str] = None,
+    ) -> None:
+        """Log a secret access event.
+
+        Args:
+            principal: Server-derived principal identifier (never from
+                request headers, MCP params, or client-declared scopes).
+            scope: Server-derived scope or role set.
+            outcome: One of "hit", "miss", "denied", "error".
+            secret_key: Logical key name (never the value).
+            error_message: Optional error detail for denied/error outcomes.
+        """
+        if outcome not in ("hit", "miss", "denied", "error"):
+            raise ValueError(
+                f"Invalid secret_access outcome: {outcome!r}; "
+                "must be one of hit, miss, denied, error"
+            )
+
+        event = self._create_event(
+            event_type=AuditEventType.SECRET_ACCESS,
+            success=(outcome == "hit"),
+            error_message=error_message,
+            extra={
+                "principal": principal,
+                "scope": scope,
+                "outcome": outcome,
+                "secret_key": secret_key,
             },
         )
         self._log_event(event)

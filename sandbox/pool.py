@@ -223,6 +223,8 @@ class WarmSandbox:
         retries: int,
         max_concurrency: int,
         timeout: float,
+        auto_parallel: bool = False,
+        max_parallel_calls: int = None,
     ) -> Dict[str, Any]:
         """Execute code in this sandbox."""
         if not self.process or self.process.returncode is not None:
@@ -550,6 +552,8 @@ class SandboxPool:
         retries: int = 0,
         max_concurrency: int = 5,
         timeout: float = 60.0,
+        auto_parallel: bool = False,
+        max_parallel_calls: int = None,
     ) -> Dict[str, Any]:
         """Execute code using a sandbox from the pool."""
         async with self._semaphore:

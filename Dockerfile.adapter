@@ -1,8 +1,9 @@
 # MCProxy Adapter — stdio-to-HTTP bridge
 #
-# This is intentionally *not* hardened — the adapter needs to
-# spawn arbitrary subprocesses (npx, uvx, node, python) which
-# requires shell access and a permissive environment.
+# Hardening is applied at the *runtime* level (quadlet / compose):
+#   NoNewPrivileges, DropCapability=ALL, PrivateTmp, bridge networking.
+# This image runs as a non-root user; subprocess spawning (npx, uvx,
+# node, python) is permitted via the runtime's capability allow-list.
 #
 # Build:
 #   docker build -f Dockerfile.adapter -t localhost/mcp-adapter:latest .
@@ -10,6 +11,11 @@
 FROM python:3.11-slim
 
 WORKDIR /app
+
+# Pin venv Python interpreter — fail-fast if missing; no PATH fallback
+ARG VENV_PYTHON=/usr/local/bin/python3.11
+RUN test -x "${VENV_PYTHON}" || { echo "FATAL: ${VENV_PYTHON} not executable" >&2; exit 1; }
+ENV VENV_PYTHON="${VENV_PYTHON}"
 
 # Install runtime deps
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -71,8 +77,31 @@ RUN npm install -g @perplexity-ai/mcp-server 2>&1 | tail -2
 # Copy adapter code
 COPY adapter.py logging_config.py /app/
 
+# Declare port for runtime port-audit (must be >= 1024)
+EXPOSE 8080
+
+# Root-owned noexec trap: shells resolve to /dev/null when PATH-prepended
+# for spawned MCP server environments only (prevents shell=True escalation).
+RUN mkdir -p /usr/local/noexec \
+    && chmod 0555 /usr/local/noexec \
+    && ln -sf /dev/null /usr/local/noexec/sh \
+    && ln -sf /dev/null /usr/local/noexec/bash \
+    && ln -sf /dev/null /usr/local/noexec/python \
+    && ln -sf /dev/null /usr/local/noexec/python3 \
+    && ln -sf /dev/null /usr/local/noexec/dash \
+    && ln -sf /dev/null /usr/local/noexec/ash
+
+# Run as non-root: grant read access to root-owned caches (npx, uv)
+RUN groupadd -r appuser && useradd -r -g appuser -d /home/appuser -m appuser \
+    && chown -R appuser:appuser /app \
+    && chmod -R a+rX /root/.npm /root/.local
+
+USER appuser
+ENV PATH="/usr/local/bin:/usr/bin:/bin:/root/.local/bin"
+ENV HOME="/home/appuser"
+
 HEALTHCHECK --interval=15s --timeout=5s --retries=3 \
     CMD curl -sf http://localhost:8080/health || exit 1
 
-ENTRYPOINT ["python", "/app/adapter.py"]
-CMD ["--port", "8080", "--host", "0.0.0.0", "--", "npx", "-y", "mcp-server-fear-greed"]
+ENTRYPOINT ["/usr/local/bin/python3.11", "/app/adapter.py"]
+CMD ["--port", "8080", "--host", "0.0.0.0", "--", "/usr/local/bin/npx", "-y", "mcp-server-fear-greed"]

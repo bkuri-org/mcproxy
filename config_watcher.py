@@ -127,6 +127,24 @@ def validate_security(security: Dict[str, Any]) -> None:
         interval = security["blocklist_sync_interval"]
         if not isinstance(interval, int) or interval < 60:
             raise ConfigError("security.blocklist_sync_interval must be >= 60 seconds")
+        if "blocklist_url" not in security:
+            raise ConfigError(
+                "security.blocklist_sync_interval requires blocklist_url to be set"
+            )
+
+    if "blocklist_fetch_timeout" in security:
+        timeout = security["blocklist_fetch_timeout"]
+        if not isinstance(timeout, (int, float)) or timeout <= 0:
+            raise ConfigError("security.blocklist_fetch_timeout must be a positive number")
+        if "blocklist_sync_interval" not in security:
+            raise ConfigError(
+                "security.blocklist_fetch_timeout requires blocklist_sync_interval to be set"
+            )
+        if timeout >= security["blocklist_sync_interval"]:
+            raise ConfigError(
+                "security.blocklist_fetch_timeout must be strictly less than "
+                "blocklist_sync_interval"
+            )
 
     if "allow_risky_servers" in security:
         if not isinstance(security["allow_risky_servers"], bool):
@@ -354,26 +372,20 @@ def validate_groups(
             if isinstance(ns_def, dict):
                 is_isolated = ns_def.get("isolated", False)
 
+            if has_force_prefix:
+                dep_msg = (
+                    f"Group '{group_name}' uses deprecated '!' prefix on '{actual_ns_name}' - "
+                    f"list the namespace directly"
+                )
+                warnings.append(dep_msg)
+                if raise_on_error:
+                    logger.warning(dep_msg)
+
             if is_isolated:
-                if has_force_prefix:
-                    warning_msg = f"Group '{group_name}' forcefully includes isolated namespace '{actual_ns_name}'"
-                    warnings.append(warning_msg)
-                    if raise_on_error:
-                        logger.warning(warning_msg)
-                else:
-                    error_msg = (
-                        f"Group '{group_name}' references isolated namespace '{actual_ns_name}' "
-                        f"without '!' prefix. Use '!{actual_ns_name}' to force inclusion."
-                    )
-                    warning_msg = (
-                        f"Group '{group_name}' references isolated namespace '{actual_ns_name}' "
-                        f"without '!' prefix - rejecting group"
-                    )
-                    if raise_on_error:
-                        logger.warning(warning_msg)
-                        raise ConfigError(error_msg)
-                    errors.append(error_msg)
-                    warnings.append(warning_msg)
+                iso_msg = f"Group '{group_name}' includes isolated namespace '{actual_ns_name}'"
+                warnings.append(iso_msg)
+                if raise_on_error:
+                    logger.warning(iso_msg)
 
     return (errors, warnings)
 

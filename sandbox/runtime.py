@@ -262,6 +262,15 @@ class _NamespaceAccessControl:
         self.manifest = manifest
 
     def can_access(self, namespace, target_server):
+        # Fail closed: no namespace = no tool access. Pure code still runs;
+        # only api.server(...) calls hit this check.
+        if not namespace:
+            available = ", ".join(sorted(self.manifest.namespaces.keys())) or "none"
+            return False, (
+                "No namespace specified. Pass namespace= in the dispatch call "
+                f"or an X-Namespace header. Available: {available}"
+            )
+
         allowed = self._resolve_allowed_servers(namespace)
         if target_server in allowed:
             return True, ""
@@ -296,6 +305,7 @@ class _NamespaceAccessControl:
         group_config = self.manifest.get_group(namespace_or_group)
         if group_config:
             for ns_ref in group_config.get("namespaces", []):
+                # '!' prefix is a deprecated include-alias, kept for config compat
                 actual_ns = ns_ref[1:] if ns_ref.startswith("!") else ns_ref
                 _resolve_namespace(actual_ns)
         else:

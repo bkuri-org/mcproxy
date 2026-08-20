@@ -38,6 +38,11 @@ dev = [
     "pytest-asyncio>=0.21.0",
     "pytest-cov>=4.0.0",
 ]
+vault = ["hvac>=2.0.0"]
+aws = ["boto3>=1.34.0"]
+azure = ["azure-identity>=1.15.0", "azure-keyvault-secrets>=4.8.0"]
+gcp = ["google-cloud-secret-manager>=2.18.0"]
+secrets = ["mcproxy[vault,aws,azure,gcp]"]
 
 [project.scripts]
 mcproxy = "main:main"
@@ -53,7 +58,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["."]
+packages = [".", "secrets"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

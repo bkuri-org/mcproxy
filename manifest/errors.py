@@ -47,20 +47,20 @@ def validate_group(
             is_valid = False
             continue
 
+        if explicit_isolated:
+            warnings.append(
+                f"Group '{name}' uses deprecated '!' prefix on '{actual_name}' - "
+                f"list the namespace directly"
+            )
+
         ns_def = namespaces.get(actual_name, {})
         is_isolated = (
             ns_def.get("isolated", False) if isinstance(ns_def, dict) else False
         )
 
-        if is_isolated and not explicit_isolated:
+        if is_isolated:
             warnings.append(
-                f"Group '{name}' references isolated namespace '{actual_name}' "
-                f"without '!' prefix - this is not allowed"
-            )
-            is_valid = False
-        elif is_isolated and explicit_isolated:
-            warnings.append(
-                f"Group '{name}' explicitly includes isolated namespace '{actual_name}'"
+                f"Group '{name}' includes isolated namespace '{actual_name}'"
             )
 
     return is_valid, warnings

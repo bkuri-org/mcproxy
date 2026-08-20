@@ -5,8 +5,6 @@ from typing import Any, Callable, Dict, List, Optional
 
 from logging_config import get_logger
 
-from server.handlers.tools.fallback import FallbackSelector, FailoverExhaustedError
-
 logger = get_logger(__name__)
 
 
@@ -47,18 +45,6 @@ async def handle_execute(
     effective_namespace = param_namespace or connection_namespace
     timeout_secs = params.get("timeout_secs")
     retries = params.get("retries", 0)
-
-    # === Fallback-aware tool executor routing ===
-    fallback_selector: Optional[FallbackSelector] = None
-    if tool_executor is not None and mcproxy_config is not None:
-        try:
-            fallback_selector = FallbackSelector(mcproxy_config)
-            tool_executor = fallback_selector.wrap(tool_executor)
-        except Exception as fb_err:
-            logger.warning(
-                f"[EXECUTE] FallbackSelector init failed, using raw executor: {fb_err}"
-            )
-    # === End fallback routing ===
 
     # === Thinking engine ===
     think_param = params.get("think")
@@ -104,25 +90,13 @@ async def handle_execute(
                 },
             }
 
-        if not effective_namespace:
-            return {
-                "jsonrpc": "2.0",
-                "id": msg_id,
-                "error": {
-                    "code": -32602,
-                    "message": "Missing required parameter: namespace. "
-                    "v2.0 requires explicit namespace for execute(). "
-                    "Provide in params or via X-Namespace header.",
-                },
-            }
-
         session = None
         if session_manager is not None:
             session = await session_manager.get_or_create(session_id)
 
         result = await sandbox_executor.execute(
             code,
-            namespace=effective_namespace,
+            namespace=effective_namespace or "",
             timeout_secs=timeout_secs,
             session=session,
             retries=retries,
@@ -159,16 +133,6 @@ async def handle_execute(
         content = [{"type": "text", "text": json.dumps(result)}]
         return {"jsonrpc": "2.0", "id": msg_id, "result": {"content": content}}
 
-    except FailoverExhaustedError as e:
-        logger.error(f"[EXECUTE_ERROR] Failover exhausted (all endpoints unhealthy): {e}")
-        return {
-            "jsonrpc": "2.0",
-            "id": msg_id,
-            "error": {
-                "code": -32001,
-                "message": f"All tool endpoints unhealthy (failover exhausted): {e}",
-            },
-        }
     except Exception as e:
         logger.error(f"[EXECUTE_ERROR] {e}")
         error_msg = str(e)
@@ -268,16 +232,6 @@ async def handle_trace(
                 },
             }
 
-        if not effective_namespace:
-            return {
-                "jsonrpc": "2.0",
-                "id": msg_id,
-                "error": {
-                    "code": -32602,
-                    "message": "Missing required parameter: namespace",
-                },
-            }
-
         validate_start = time.perf_counter()
         is_valid, error = sandbox_executor.validate_code(code)
         validate_ms = int((time.perf_counter() - validate_start) * 1000)
@@ -305,7 +259,7 @@ async def handle_trace(
         exec_start = time.perf_counter()
         result = await sandbox_executor.execute(
             code,
-            namespace=effective_namespace,
+            namespace=effective_namespace or "",
             timeout_secs=timeout_secs,
             session=session,
             retries=retries,

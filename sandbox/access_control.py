@@ -44,6 +44,15 @@ class NamespaceAccessControl:
         Returns:
             Tuple of (allowed: bool, error_message: str)
         """
+        # Fail closed: no namespace = no tool access. Pure code still runs;
+        # only api.server(...) calls hit this check.
+        if not namespace:
+            available = ", ".join(sorted(self.manifest.namespaces.keys())) or "none"
+            return False, (
+                "No namespace specified. Pass namespace= in the dispatch call "
+                f"or an X-Namespace header. Available: {available}"
+            )
+
         ns_config = self.manifest.get_namespace(namespace)
         if not ns_config:
             return False, f"Namespace '{namespace}' not found in manifest"

@@ -107,19 +107,19 @@ def handle_help(msg_id: Any, arguments: Dict[str, Any]) -> Dict[str, Any]:
             "examples": [
                 {
                     "description": "Discover available servers",
-                    "code": "mcproxy(action='search', query='', namespace='dev')",
+                    "code": "mcproxy(action='search', query='', namespace='default')",
                 },
                 {
                     "description": "Call a tool on a server",
-                    "code": "mcproxy(action='execute', code='api.server(\"wikipedia\").search(query=\"Python\")', namespace='dev')",
+                    "code": "mcproxy(action='execute', code='api.server(\"wikipedia\").search(query=\"Python\")', namespace='default')",
                 },
                 {
                     "description": "Inspect tool schemas",
-                    "code": "mcproxy(action='inspect', server='wikipedia', tool='search', namespace='dev')",
+                    "code": "mcproxy(action='inspect', server='wikipedia', tool='search', namespace='default')",
                 },
                 {
                     "description": "Inspect all tools for a server",
-                    "code": "mcproxy(action='inspect', server='wikipedia', namespace='dev')",
+                    "code": "mcproxy(action='inspect', server='wikipedia', namespace='default')",
                 },
                 {
                     "description": "Get sandbox restrictions",
@@ -127,13 +127,13 @@ def handle_help(msg_id: Any, arguments: Dict[str, Any]) -> Dict[str, Any]:
                 },
                 {
                     "description": "Run parallel tool calls (faster than sequential)",
-                    "code": 'mcproxy(action=\'execute\', code=\'results = parallel([\\n    lambda: api.server("wikipedia").search(query="Python"),\\n    lambda: api.server("wikipedia").search(query="JavaScript")\\n])\', namespace=\'dev\')',
+                    "code": 'mcproxy(action=\'execute\', code=\'results = parallel([\\n    lambda: api.server("wikipedia").search(query="Python"),\\n    lambda: api.server("wikipedia").search(query="JavaScript")\\n])\', namespace=\'default\')',
                 },
             ],
             "quick_start": {
-                "step_1_discover": "mcproxy(action='search', query='', namespace='dev')",
+                "step_1_discover": "mcproxy(action='search', query='', namespace='default')",
                 "step_2_inspect": "mcproxy(action='inspect', server='wikipedia', tool='search')",
-                "step_3_execute": "mcproxy(action='execute', code='api.server(\"wikipedia\").search(query=\"Python\")', namespace='dev')",
+                "step_3_execute": "mcproxy(action='execute', code='api.server(\"wikipedia\").search(query=\"Python\")', namespace='default')",
             },
             "tips": {
                 "tool_names_are_attributes": "Use api.server('name').actual_tool_name(args) - tool_name is an attribute, not a method call like .tool('name').",

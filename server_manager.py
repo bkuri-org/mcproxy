@@ -12,6 +12,8 @@ from utils.fuzzy_match import suggest_best_match
 from logging_config import get_logger
 from http_backend import HTTPServerConnector
 from tool_aggregator import untransform_tool_name
+from classification import enforce_server_classifications
+from versioning import VersionRegistry
 
 logger = get_logger(__name__)
 
@@ -130,9 +132,12 @@ class ServerManager:
         self.config = config
         self.servers: Dict[str, HTTPServerConnector] = {}
         self._on_server_ready = on_server_ready
+        self._version_registry = VersionRegistry()
 
     async def spawn_servers(self) -> None:
         servers_config = self.config.get("servers", [])
+        servers_config = enforce_server_classifications(servers_config)
+        self._version_registry.load(self.config.get("versioning", {}))
         logger.info(
             f"Connecting to {len(servers_config)} servers with staggered startup..."
         )
@@ -166,6 +171,7 @@ class ServerManager:
                 tool_timeout=server_config.get("tool_timeout"),
                 tool_timeouts=server_config.get("tool_timeouts"),
                 headers=server_config.get("headers"),
+                on_tools_changed=self._on_server_ready,
             )
             self.servers[server.name] = server
             asyncio.create_task(self._start_server(server))
@@ -177,6 +183,13 @@ class ServerManager:
                 self._on_server_ready(server.name, len(server.tools))
             elif not success:
                 logger.error(f"Server '{server.name}' failed to connect")
+            # Always run the health loop: it self-heals boot-failed servers
+            # via restart_if_needed() and refreshes tools on change.
+            # ponytail: start()/health checks run sync HTTP on the event loop,
+            # so a slow-timeout upstream (e.g. 120s init timeout while down)
+            # blocks reconnects for everyone; keep per-server timeout low for
+            # flaky upstreams, or move connectors to asyncio.to_thread.
+            server.start_health_check()
         except Exception as e:
             logger.error(f"Error connecting to server '{server.name}': {e}")
 
@@ -191,12 +204,23 @@ class ServerManager:
         tools: Dict[str, List[Dict[str, Any]]] = {}
         for name, server in self.servers.items():
             if server.is_running():
-                tools[name] = server.tools
+                tools[name] = list(server.tools)
         return tools
+
+    def get_version_stats(self) -> Dict[str, Any]:
+        """Return versioning statistics (admin-gated at API layer)."""
+        return self._version_registry.get_stats()
 
     async def call_tool(
         self, server_name: str, tool_name: str, arguments: Dict[str, Any]
     ) -> Any:
+        # Versioned tool names pass through resolve; unregistered tools are
+        # the normal case (no versioning config) and pass through untouched.
+        try:
+            tool_name = self._version_registry.resolve(tool_name)
+        except Exception:
+            pass
+
         if server_name not in self.servers:
             raise ValueError(f"Unknown server: {server_name}")
 
@@ -243,8 +267,15 @@ class ServerManager:
             raise
 
     async def update_config(self, new_config: Dict[str, Any]) -> None:
+        self._version_registry.reset()
+
+        new_servers_list = enforce_server_classifications(
+            new_config.get("servers", [])
+        )
+        self._version_registry.load(new_config.get("versioning", {}))
+
         old_servers = {s["name"]: s for s in self.config.get("servers", [])}
-        new_servers = {s["name"]: s for s in new_config.get("servers", [])}
+        new_servers = {s["name"]: s for s in new_servers_list}
 
         to_remove = set(old_servers.keys()) - set(new_servers.keys())
         to_add = set(new_servers.keys()) - set(old_servers.keys())
