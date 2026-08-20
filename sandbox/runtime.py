@@ -305,6 +305,7 @@ class _NamespaceAccessControl:
         group_config = self.manifest.get_group(namespace_or_group)
         if group_config:
             for ns_ref in group_config.get("namespaces", []):
+                # '!' prefix is a deprecated include-alias, kept for config compat
                 actual_ns = ns_ref[1:] if ns_ref.startswith("!") else ns_ref
                 _resolve_namespace(actual_ns)
         else:

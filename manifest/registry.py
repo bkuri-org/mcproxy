@@ -485,6 +485,7 @@ class CapabilityRegistry:
         ns_refs = group_def.get("namespaces", [])
 
         for ns_ref in ns_refs:
+            # '!' prefix is a deprecated include-alias, kept for config compat
             actual_name = ns_ref[1:] if ns_ref.startswith("!") else ns_ref
             try:
                 servers = self.resolve_namespace(actual_name)
