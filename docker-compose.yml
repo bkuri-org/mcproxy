@@ -32,9 +32,9 @@ services:
     ports:
       - "192.168.50.X:12010:12010"
     volumes:
-      - ./config:/app/config:ro
+      - ./mcproxy.json:/app/config/mcproxy.json:ro
       - ./data:/app/data:rw
-      - ./.cache:/app/.cache:rw
+      - ./cache:/app/cache:rw
     environment:
       - PYTHONUNBUFFERED=1
     networks:
@@ -58,14 +58,6 @@ services:
       retries: 3
       start_period: 10s
     mem_limit: 512m
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    tmpfs:
-      - /tmp:rw,noexec,nosuid,nodev
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
 
   # ── Adapter Build Helper ──────────────────────────────────────
   # Uses a permissive base (no shell/python disabling) since
@@ -80,14 +72,6 @@ services:
       - mcproxy-net
     restart: unless-stopped
     mem_limit: 256m
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    tmpfs:
-      - /tmp:rw,noexec,nosuid,nodev
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
 
   # ── Adapters ──────────────────────────────────────────────────
 

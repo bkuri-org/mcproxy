@@ -64,3 +64,4 @@ data/
 .dolt/
 *.db
 .beads-credential-key
+cache/
