@@ -1,13 +1,1 @@
-# Project Goals
-
-## G1: Agents [active]
-
-Theme 'agents' spanning 1 wiki page(s)
-
-
----
-
-## G2: Readme [active]
-
-Theme 'readme' spanning 1 wiki page(s)
-
+> **Superseded** — This file is retired. All project status, goals, and roadmap information now lives in [PROJECT.md](PROJECT.md) (gtd-standard canonical home).

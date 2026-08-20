@@ -20,15 +20,17 @@ from typing import Any, Callable, Dict, List, Optional
 
 from logging_config import get_logger
 
-from .param_gen import (  # noqa: E402
-    AmbiguityError,
-    ValidationError,
-    DEFAULT_FUZZY_THRESHOLD,
-    build_missing_params_prompt,
-    extract_and_bind,
-    extract_params_from_context,
-    map_params_to_schema,
-    validate_params,
+from .intent import (  # noqa: E402
+    Intent,
+    IntentValidationError,
+    build_classification_prompt,
+    classify_intent,
+    normalize_intent,
+    validate_intent,
+)
+from .engine import (  # noqa: E402
+    ThinkEngine,
+    ThinkEngineRegistry,
 )
 from .intent import (  # noqa: E402
     Intent,
@@ -42,7 +44,6 @@ from .intent import (  # noqa: E402
 logger = get_logger(__name__)
 
 __all__ = [
-    # Think engine
     "ThinkEngine",
     "build_think_prompt",
     "DEFAULT_ENGINES",
@@ -99,6 +100,11 @@ DEFAULT_DANGEROUS_KEYWORDS: List[str] = [
 ]
 
 DEFAULT_COMPLEXITY_THRESHOLD: int = 3
+
+# ---------------------------------------------------------------------------
+# Shared dry-run constants (re-exported from dry_run for fast access)
+# ---------------------------------------------------------------------------
+_DRY_RUN_ENABLED: bool = True  # toggled by config reasoning.dry_run.enabled
 
 
 def _count_tool_calls(code: str) -> int:

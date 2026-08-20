@@ -12,7 +12,7 @@ PublishPort=12010:12010
 Exec=--log --port 12010 --host 0.0.0.0 --config /app/config/mcproxy.json
 
 # Persistent volumes
-Volume=/srv/containers/mcproxy/config/mcproxy.json:/app/config/mcproxy.json:ro,Z
+Volume=/srv/containers/mcproxy/config:/app/config:ro,Z
 Volume=/srv/containers/mcproxy/config/.env:/app/.env:ro,Z
 Volume=mcproxy-data:/app/data:Z
 Volume=mcproxy-cache:/app/cache:Z

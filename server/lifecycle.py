@@ -219,6 +219,11 @@ def get_capability_registry() -> Optional[CapabilityRegistry]:
     return capability_registry
 
 
+def get_server_manager() -> Optional[Any]:
+    """Get the global server manager."""
+    return server_manager
+
+
 def get_sandbox_executor() -> Optional[SandboxExecutor]:
     """Get the global sandbox executor."""
     return sandbox_executor

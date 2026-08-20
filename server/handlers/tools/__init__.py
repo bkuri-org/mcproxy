@@ -28,7 +28,7 @@ from .search import handle_search
 META_TOOLS: List[Dict[str, Any]] = [
     {
         "name": "dispatch",
-        "description": "Unified tool: execute (run code), search (find tools), inspect (get schemas), help (get docs). "
+        "description": "Unified tool: execute (run code), search (find tools), inspect (get schemas), help (get docs), refresh (force tool-catalog rebuild). "
         "Response: {status, result, stdout, traceback}. "
         "CRITICAL SYNTAX RULES for execute code: "
         "1. Tool calls use KEYWORD arguments only: api.server('name').tool_name(param='value') "
@@ -43,7 +43,7 @@ META_TOOLS: List[Dict[str, Any]] = [
             "properties": {
                 "action": {
                     "type": "string",
-                    "enum": ["execute", "search", "inspect", "help"],
+                    "enum": ["execute", "search", "inspect", "help", "refresh"],
                     "description": "Action to perform: execute (run code), search (find tools), inspect (get tool schemas), help (get documentation)",
                 },
                 "code": {

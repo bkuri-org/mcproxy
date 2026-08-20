@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from auth import AgentRegistry
 from auth.audit_logger import AuditLogger
 from logging_config import get_logger
+from tracing import TraceStore
 
 logger = get_logger(__name__)
 
@@ -57,6 +58,14 @@ def get_blocklist_sync(request: Request):
     if not sync:
         raise HTTPException(status_code=503, detail="Blocklist sync not configured")
     return sync
+
+
+def get_trace_store(request: Request) -> TraceStore:
+    """Get trace store from app state."""
+    store = getattr(request.app.state, "trace_store", None)
+    if not store:
+        raise HTTPException(status_code=503, detail="Tracing not configured")
+    return store
 
 
 def admin_auth(request: Request) -> bool:
@@ -333,10 +342,38 @@ async def refresh_blocklist(
     )
 
 
+@router.get("/traces")
+async def list_traces(
+    request: Request,
+    limit: int = 50,
+    offset: int = 0,
+    store: TraceStore = Depends(get_trace_store),
+    _: bool = Depends(admin_auth),
+) -> JSONResponse:
+    """List recent traces (read-only)."""
+    traces = store.list_traces(limit=limit, offset=offset)
+    return JSONResponse(content={"traces": traces, "count": len(traces)})
+
+
+@router.get("/traces/{trace_id}")
+async def get_trace(
+    request: Request,
+    trace_id: str,
+    store: TraceStore = Depends(get_trace_store),
+    _: bool = Depends(admin_auth),
+) -> JSONResponse:
+    """Get a single trace by ID (read-only)."""
+    trace = store.get_trace(trace_id)
+    if not trace:
+        raise HTTPException(status_code=404, detail="Trace not found")
+    return JSONResponse(content=trace)
+
+
 def register_admin_routes(
-    app, agent_registry: AgentRegistry, auth_config: dict
+    app, agent_registry: AgentRegistry, auth_config: dict, trace_store: TraceStore
 ) -> None:
     """Register admin routes with the FastAPI app."""
     app.state.agent_registry = agent_registry
     app.state.auth_config = auth_config
+    app.state.trace_store = trace_store
     app.include_router(router)

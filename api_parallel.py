@@ -4,6 +4,11 @@ Provides concurrent tool execution with semaphore-based concurrency limiting.
 All results pass through the shared apply_migration() helper from
 schema_migration.py to guarantee schema consistency even when the
 parallel path bypasses the router choke point.
+
+Results are additionally passed through apply_result_limit() from
+result_limiter.py to enforce a cumulative byte budget, ensuring that
+oversized responses are summarised or truncated before returning to
+the caller.
 """
 
 import asyncio
@@ -11,6 +16,7 @@ from dataclasses import dataclass
 from typing import Any, Awaitable, Callable, List, Optional, TypeVar
 
 from logging_config import get_logger
+from server.result_limiter import apply_result_limit
 from schema_migration import apply_migration
 
 logger = get_logger(__name__)
@@ -18,6 +24,7 @@ logger = get_logger(__name__)
 T = TypeVar("T")
 
 DEFAULT_MAX_CONCURRENCY: int = 5
+DEFAULT_MAX_RESULT_SIZE: int = 50000
 
 
 @dataclass
@@ -54,17 +61,27 @@ class ParallelExecutor:
     async def execute_parallel(
         self,
         callables: List[Callable[[], Awaitable[T]]],
+        max_result_size: Optional[int] = None,
     ) -> List[ParallelResult]:
         """Execute multiple async callables concurrently.
 
         Args:
             callables: List of async callables to execute
+            max_result_size: Cumulative byte budget for each result.
+                Extracted from per-call params upstream; clamped to
+                DEFAULT_MAX_RESULT_SIZE when None or exceeds the default.
 
         Returns:
             List of ParallelResult objects in order (allSettled pattern)
         """
         if not callables:
             return []
+
+        effective_max = (
+            min(max_result_size, DEFAULT_MAX_RESULT_SIZE)
+            if max_result_size is not None
+            else DEFAULT_MAX_RESULT_SIZE
+        )
 
         semaphore = asyncio.Semaphore(self._max_concurrency)
 
@@ -100,6 +117,8 @@ class ParallelExecutor:
         # Blocking-audit gate: every fulfilled result must pass through the
         # shared apply_migration() helper so that the parallel path never
         # diverges from the router's schema-migration behaviour.
+        # After migration, apply_result_limit enforces the cumulative byte
+        # budget propagated recursively through nested structures.
         for idx, res in enumerate(final_results):
             if res.status == "fulfilled" and res.result is not None:
                 try:
@@ -112,6 +131,18 @@ class ParallelExecutor:
                     )
                     res.status = "rejected"
                     res.error = f"schema_migration: {type(exc).__name__}: {exc}"
+                    res.result = None
+                    continue
+                try:
+                    res.result = apply_result_limit(res.result, effective_max)
+                except Exception as exc:
+                    logger.warning(
+                        "Result limiting failed on parallel result[%d]: %s",
+                        idx,
+                        exc,
+                    )
+                    res.status = "rejected"
+                    res.error = f"result_limiter: {type(exc).__name__}: {exc}"
                     res.result = None
 
         return final_results

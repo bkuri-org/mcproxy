@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [5.2.0] - 2026-03-05
+
+### Changed
+
+- **Version bump (2.0.0 → 5.2.0)**: Synchronized `pyproject.toml` as the single source of truth for the project version; updated `README.md` and `ROADMAP.md` version references to match
+
+## [2.1.0] - 2026-03-04
+
+### Changed
+
+- **Canonical status home**: Created `gtd-standard PROJECT.md` as the single source of truth for project status, replacing scattered status across multiple docs
+- **GOALS.md removed**: Deleted `GOALS.md`; removal gated on a symmetric tooling grep for `GOALS.md|ROADMAP.md` across `.sh`, `Makefile`, `.yml`, `.beads/hooks/`, and `.github/workflows/` — no generator or unconditional reader references remain
+- **ROADMAP.md trimmed**: Reduced to a superseded v4.x historical note with a redirect pointer to `PROJECT.md`; same tooling-grep gate applied before trimming
+- **Tooling consistency**: All generators referencing `GOALS.md` or `ROADMAP.md` have been removed or muted; all unconditional readers now guard on file existence or redirect to `PROJECT.md`
+- **Deploy values sourced locally**: Owner and deploy fields in `PROJECT.md` are sourced strictly from `deploy.sh` and `docker-compose.yml`, cross-checked against the `deploy.yml` workflow; unconfirmed fields marked `TBD`
+- **Dangling references fixed**: All remaining cross-file references to `GOALS.md` or the pre-trim `ROADMAP.md` content now point to `PROJECT.md`
+
 ## [2.0.0] - 2026-03-03
 
 ### Breaking Changes
@@ -46,6 +63,8 @@ mcproxy_sequence(
 
 ### Added
 
+- **Online blocklist**: Allowlisted HTTPS-only source with checksum-verified fetch and bundled seed; fail-closed (fatal on unreachable boot); enforced at both pre-dispatch and post-resolution
+- **Container hardening**: Shared digest pins across all images, exact-version requirements (no floating tags), enumerated minimal capabilities, and dual-runtime docker + podman smoke gates
 - **Project metadata**: Added `pyproject.toml` for proper version tracking and dependency management
 - **uv support**: Recommended setup now uses `uv` for faster dependency installation
 - **`mcproxy_sequence` single operations**: transform and write are now optional

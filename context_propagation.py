@@ -391,3 +391,22 @@ def get_allowed_tools() -> Set[str]:
 
 def get_context_aliases() -> Set[str]:
     return set(_CONTEXT_ALIASES)
+
+
+# ---------------------------------------------------------------------------
+# tool_aggregator facade (schema-level view)
+# ponytail: stubs — bumble-bot's tool_aggregator imports these three names;
+# schema-level stripping is identity while the feature is disabled.
+# ---------------------------------------------------------------------------
+
+def is_context_propagation_enabled() -> bool:
+    return get_config().enabled
+
+
+def is_tool_context_allowed(tool_name: str) -> bool:
+    return get_config().is_tool_allowed(tool_name)
+
+
+def strip_context_aliases_from_schema(tool: Dict[str, Any]) -> Dict[str, Any]:
+    # Only meaningful when enabled; aggregator guards the call.
+    return tool

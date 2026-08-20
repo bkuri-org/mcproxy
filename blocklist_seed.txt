@@ -1,0 +1,72 @@
+# Blocklist Seed — Fail-Closed Boot Bundle
+# This file is the bundled fallback blocklist. If the online source
+# cannot be reached or fails checksum verification at boot, ONLY
+# these entries are enforced. An empty or missing seed is FATAL.
+
+## ── Online Source (HTTPS-only, allowlisted) ──────────────────────
+# source_url: https://blocklist.example.com/primary.sha256
+# source_checksum_type: sha256
+# source_checksum: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+# refresh_interval: 6h
+# fetch_timeout: 30s
+# retry_count: 3
+# retry_backoff: 1s,2s,4s
+# fail_closed: true
+
+## ── Pre-Dispatch Enforcement ─────────────────────────────────────
+# Before any network dispatch, every egress FQDN and literal IP is
+# evaluated against BOTH the seed and the live list (if loaded).
+# Matches are dropped; log level: alert.
+
+## ── Post-Resolution Enforcement ──────────────────────────────────
+# After DNS resolution, resolved IPs are re-evaluated. This catches
+# fast-flux, DNS-rebinding, and split-horizon evasion.
+# Matches are dropped; log level: alert.
+
+## ── Container Hardening ─────────────────────────────────────────
+# image: docker.io/library/blocklist-fetcher:1.4.2@sha256:abc123def456
+# runtime: docker|podman  (dual smoke gate at startup)
+# exact_version_required: true
+# capabilities:
+#   - CAP_NET_RAW
+# capabilities_dropped: ALL
+# seccomp: strict
+# read_only_rootfs: true
+# no_new_privs: true
+# security_opt:
+#   - no-new-privileges:true
+#   - seccomp=blocklist-fetcher.json
+# shared_digest_pins:
+#   - docker.io/library/blocklist-fetcher:1.4.2@sha256:abc123def456abc123def456abc123def456abc123def456abc123def456abcd
+#   - docker.io/library/ca-certificates:2024.01.10@sha256:fedcba098765fedcba098765fedcba098765fedcba098765fedcba098765fedc
+# minimal_capabilities_enumerated:
+#   - net_bind_service
+#   - dac_override  (only if required for bind-mount writes)
+
+## ── Dual-Runtime Smoke Gates ─────────────────────────────────────
+# At unit startup, BEFORE any fetch:
+#   1. docker run --rm <pinned-image> echo ok  → must exit 0
+#   2. podman run --rm <pinned-image> echo ok  → must exit 0
+# If either gate fails: log fatal, abort, fall back to seed-only.
+
+## ── Seed Entries (fail-closed fallback) ──────────────────────────
+# Format: one entry per line. Supported: domain, CIDR, exact IP.
+# Comments and blank lines are ignored.
+
+malware-c2.evil.example.com
+phishing-login.badactor.net
+10.0.0.0/8
+172.16.0.0/12
+192.168.0.0/16
+169.254.0.0/16
+127.0.0.0/8
+::1/128
+fe80::/10
+fc00::/7
+0.0.0.0/8
+224.0.0.0/4
+255.255.255.255/32
+tracker.mining-pool.example.org
+sinkhole.c2-infrastructure.bad
+dns-rebind.attacker.example.com
+update.fake-av.example.net

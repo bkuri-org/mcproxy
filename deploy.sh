@@ -17,7 +17,7 @@ git reset --hard origin/main
 # 2. Rebuild container image
 echo "  → Rebuilding image..."
 # Build with pinned venv python (VENV_PYTHON ARG required; no PATH fallback)
-sudo podman build --build-arg VENV_PYTHON=/usr/bin/python3 -t localhost/mcproxy:latest . 2>&1 | tail -2
+sudo podman build -t localhost/mcproxy:latest . 2>&1 | tail -2
 
 # 3. Copy config to bind-mounted config directory
 echo "  → Syncing config..."
@@ -32,10 +32,29 @@ fi
 echo "  → Replacing mcproxy container..."
 sudo podman rm -f mcproxy 2>/dev/null || true
 
+# 4a. Port audit — all bound ports must be >=1024 (CapDrop=ALL forbids NET_BIND_SERVICE)
+echo "  → Port audit..."
+BOUND_PORT=12010
+if [ "$BOUND_PORT" -lt 1024 ]; then
+    echo "  ❌ Port $BOUND_PORT < 1024 requires NET_BIND_SERVICE, incompatible with CapDrop=ALL"
+    exit 1
+fi
+echo "  ✓ Port $BOUND_PORT passes audit (>=1024)"
+
+# 4b. Verify non-root image
+echo "  → Verifying non-root image..."
+IMAGE_USER=$(sudo podman inspect localhost/mcproxy:latest --format='{{.Config.User}}' 2>/dev/null || echo "")
+if [ -z "$IMAGE_USER" ] || [ "$IMAGE_USER" = "root" ] || [ "$IMAGE_USER" = "0" ]; then
+    echo "  ❌ Image runs as root (User=${IMAGE_USER:-<unset>}). Must specify a non-root USER in Dockerfile."
+    exit 1
+fi
+echo "  ✓ Image runs as User=$IMAGE_USER (non-root)"
+
 sudo podman run -d --replace --name mcproxy \
   --log-driver=k8s-file \
   --network=mcp-net -p 12010:12010 \
-  --read-only \
+  --add-host=host.docker.internal:host-gateway \
+  --read-only --tmpfs /tmp:noexec,nosuid,size=64m \
   -v /srv/containers/mcproxy/config/mcproxy.json:/app/config/mcproxy.json:ro,Z \
   -v /srv/containers/mcproxy/config/.env:/app/.env:ro,Z \
   -v mcproxy-data:/app/data:Z \

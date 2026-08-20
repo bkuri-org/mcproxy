@@ -5,6 +5,10 @@ from typing import Callable, Dict, List, Any
 
 
 @dataclass
+class IntentValidationError(ValueError):
+    """Raised when an intent payload fails validation."""
+
+
 class Intent:
     """Schema representing a parsed user intent."""
     action: str
@@ -101,4 +105,14 @@ def classify_intent(text: str, llm_call: Callable[[str], str]) -> Intent:
     except json.JSONDecodeError as e:
         raise ValueError(f"Failed to parse JSON from LLM response: {e}\nResponse: {raw_response}")
         
+    return normalize_intent(data)
+
+
+def build_classification_prompt(text: str) -> str:
+    """Return the classification prompt for *text* (LLM-callable form)."""
+    return INTENT_CLASSIFICATION_PROMPT.format(text=text)
+
+
+def validate_intent(data: Dict[str, Any]) -> Intent:
+    """Validate and normalize a raw intent payload."""
     return normalize_intent(data)

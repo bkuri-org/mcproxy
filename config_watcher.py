@@ -372,26 +372,20 @@ def validate_groups(
             if isinstance(ns_def, dict):
                 is_isolated = ns_def.get("isolated", False)
 
+            if has_force_prefix:
+                dep_msg = (
+                    f"Group '{group_name}' uses deprecated '!' prefix on '{actual_ns_name}' - "
+                    f"list the namespace directly"
+                )
+                warnings.append(dep_msg)
+                if raise_on_error:
+                    logger.warning(dep_msg)
+
             if is_isolated:
-                if has_force_prefix:
-                    warning_msg = f"Group '{group_name}' forcefully includes isolated namespace '{actual_ns_name}'"
-                    warnings.append(warning_msg)
-                    if raise_on_error:
-                        logger.warning(warning_msg)
-                else:
-                    error_msg = (
-                        f"Group '{group_name}' references isolated namespace '{actual_ns_name}' "
-                        f"without '!' prefix. Use '!{actual_ns_name}' to force inclusion."
-                    )
-                    warning_msg = (
-                        f"Group '{group_name}' references isolated namespace '{actual_ns_name}' "
-                        f"without '!' prefix - rejecting group"
-                    )
-                    if raise_on_error:
-                        logger.warning(warning_msg)
-                        raise ConfigError(error_msg)
-                    errors.append(error_msg)
-                    warnings.append(warning_msg)
+                iso_msg = f"Group '{group_name}' includes isolated namespace '{actual_ns_name}'"
+                warnings.append(iso_msg)
+                if raise_on_error:
+                    logger.warning(iso_msg)
 
     return (errors, warnings)
 

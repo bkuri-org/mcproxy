@@ -5,10 +5,6 @@ from typing import Any, Callable, Dict, List, Optional
 
 from logging_config import get_logger
 
-from server.handlers.tools.fallback import FallbackSelector, FailoverExhaustedError
-from server.handlers.tools.mock import MockEngine
-from server.cache.manager import CacheManager
-
 logger = get_logger(__name__)
 
 
@@ -21,8 +17,6 @@ async def handle_execute(
     session_manager: Optional[Any] = None,
     tool_executor: Optional[Callable] = None,
     mcproxy_config: Optional[Dict] = None,
-    cache_manager: Optional[CacheManager] = None,
-    mock_engine: Optional[MockEngine] = None,
 ) -> Dict[str, Any]:
     """Handle execute meta-tool.
 
@@ -35,8 +29,6 @@ async def handle_execute(
         session_manager: Session manager instance
         tool_executor: Callable to execute tools
         mcproxy_config: MCProxy configuration dict
-        cache_manager: Optional cache manager for tool result caching
-        mock_engine: Pre-configured MockEngine instance (explicit opt-in)
 
     Returns:
         MCP response with execution result
@@ -53,49 +45,6 @@ async def handle_execute(
     effective_namespace = param_namespace or connection_namespace
     timeout_secs = params.get("timeout_secs")
     retries = params.get("retries", 0)
-
-    # === Fallback-aware tool executor routing ===
-    fallback_selector: Optional[FallbackSelector] = None
-    if tool_executor is not None and mcproxy_config is not None:
-        try:
-            fallback_selector = FallbackSelector(mcproxy_config)
-            tool_executor = fallback_selector.wrap(tool_executor)
-        except Exception as fb_err:
-            logger.warning(
-                f"[EXECUTE] FallbackSelector init failed, using raw executor: {fb_err}"
-            )
-    # === End fallback routing ===
-
-    # === Mock engine (explicit opt-in only) ===
-    request_mock = params.get("mock") if isinstance(params.get("mock"), dict) else {}
-    mock_active = False
-
-    if tool_executor is not None:
-        # Request-level opt-in takes precedence, then pre-passed engine, then config
-        if request_mock.get("enabled") is True:
-            if mock_engine is None:
-                mock_cfg = mcproxy_config.get("mock", {}) if mcproxy_config else {}
-                mock_engine = MockEngine({**mock_cfg, **request_mock})
-            else:
-                mock_engine = mock_engine.with_overrides(request_mock)
-            mock_active = True
-            logger.info("[EXECUTE] MockEngine active (request-level opt-in)")
-        elif mock_engine is not None:
-            mock_active = True
-            logger.info("[EXECUTE] MockEngine active (pre-configured, explicit opt-in)")
-        elif mcproxy_config is not None and mcproxy_config.get("mock", {}).get("enabled", False) is True:
-            try:
-                mock_engine = MockEngine(mcproxy_config["mock"])
-                mock_active = True
-                logger.info("[EXECUTE] MockEngine active (config-level opt-in)")
-            except Exception as mock_init_err:
-                logger.warning(
-                    f"[EXECUTE] MockEngine init from config failed, skipping: {mock_init_err}"
-                )
-
-        if mock_active and mock_engine is not None:
-            tool_executor = mock_engine.wrap(tool_executor)
-    # === End mock engine ===
 
     # === Thinking engine ===
     think_param = params.get("think")
@@ -141,29 +90,16 @@ async def handle_execute(
                 },
             }
 
-        if not effective_namespace:
-            return {
-                "jsonrpc": "2.0",
-                "id": msg_id,
-                "error": {
-                    "code": -32602,
-                    "message": "Missing required parameter: namespace. "
-                    "v2.0 requires explicit namespace for execute(). "
-                    "Provide in params or via X-Namespace header.",
-                },
-            }
-
         session = None
         if session_manager is not None:
             session = await session_manager.get_or_create(session_id)
 
         result = await sandbox_executor.execute(
             code,
-            namespace=effective_namespace,
+            namespace=effective_namespace or "",
             timeout_secs=timeout_secs,
             session=session,
             retries=retries,
-            cache_manager=cache_manager,
         )
 
         tool_time_ms = result.get("tool_time_ms", 0)
@@ -190,10 +126,6 @@ async def handle_execute(
                 f"overhead={overhead_ms}ms - slowness is from upstream MCP server, not mcproxy"
             )
 
-        # Annotate result when mock engine intercepted execution
-        if mock_active and mock_engine is not None and mock_engine.has_intercepted():
-            result["_mocked"] = True
-
         # Include thinking output if the engine ran
         if thinking_output is not None:
             result["thinking"] = thinking_output
@@ -201,16 +133,6 @@ async def handle_execute(
         content = [{"type": "text", "text": json.dumps(result)}]
         return {"jsonrpc": "2.0", "id": msg_id, "result": {"content": content}}
 
-    except FailoverExhaustedError as e:
-        logger.error(f"[EXECUTE_ERROR] Failover exhausted (all endpoints unhealthy): {e}")
-        return {
-            "jsonrpc": "2.0",
-            "id": msg_id,
-            "error": {
-                "code": -32001,
-                "message": f"All tool endpoints unhealthy (failover exhausted): {e}",
-            },
-        }
     except Exception as e:
         logger.error(f"[EXECUTE_ERROR] {e}")
         error_msg = str(e)
@@ -238,7 +160,6 @@ async def handle_trace(
     sandbox_executor: Optional[Any] = None,
     session_manager: Optional[Any] = None,
     tool_executor: Optional[Callable] = None,
-    cache_manager: Optional[CacheManager] = None,
 ) -> Dict[str, Any]:
     """Handle trace action - execute code with full call stack tracing.
 
@@ -250,7 +171,6 @@ async def handle_trace(
         sandbox_executor: Sandbox executor instance
         session_manager: Session manager instance
         tool_executor: Callable to execute tools
-        cache_manager: Optional cache manager for tool result caching
 
     Returns:
         MCP response with execution result and trace data
@@ -312,16 +232,6 @@ async def handle_trace(
                 },
             }
 
-        if not effective_namespace:
-            return {
-                "jsonrpc": "2.0",
-                "id": msg_id,
-                "error": {
-                    "code": -32602,
-                    "message": "Missing required parameter: namespace",
-                },
-            }
-
         validate_start = time.perf_counter()
         is_valid, error = sandbox_executor.validate_code(code)
         validate_ms = int((time.perf_counter() - validate_start) * 1000)
@@ -349,12 +259,11 @@ async def handle_trace(
         exec_start = time.perf_counter()
         result = await sandbox_executor.execute(
             code,
-            namespace=effective_namespace,
+            namespace=effective_namespace or "",
             timeout_secs=timeout_secs,
             session=session,
             retries=retries,
             trace=True,  # Enable tracing
-            cache_manager=cache_manager,
         )
         exec_ms = int((time.perf_counter() - exec_start) * 1000)
         add_event(

@@ -10,13 +10,14 @@ instead of spawning as child processes. This enables:
 import asyncio
 import json
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 import re
 
 import requests
 
 from logging_config import get_logger
+from server.result_limiter import apply_result_limit
 from utils.fuzzy_match import suggest_best_match
 
 try:
@@ -25,6 +26,8 @@ except ImportError:
     apply_migration = None  # graceful degradation when module not yet available
 
 logger = get_logger(__name__)
+
+_DEFAULT_MAX_RESULT_SIZE_BYTES = 50000
 
 
 def _is_response_for(msg: Dict[str, Any], req_id: str) -> bool:
@@ -374,6 +377,7 @@ class HTTPServerConnector:
         tool_timeout: Optional[int] = None,
         tool_timeouts: Optional[Dict[str, int]] = None,
         headers: Optional[Dict[str, str]] = None,
+        on_tools_changed: Optional[Callable[[str, int], None]] = None,
     ):
         self.name = name
         self.url = url.rstrip("/")
@@ -396,6 +400,7 @@ class HTTPServerConnector:
         self._last_health_check: Optional[float] = None
         self._last_error: Optional[str] = None
         self._health_task: Optional[asyncio.Task] = None
+        self._on_tools_changed = on_tools_changed
 
     @property
     def tools(self) -> List[Dict[str, Any]]:
@@ -497,15 +502,25 @@ class HTTPServerConnector:
         if not self.is_running():
             raise RuntimeError(f"HTTP server '{self.name}' is not connected")
 
+        # Extract per-call max_result_size from arguments before forwarding
+        # to the upstream MCP tool. Clamp to config default.
+        raw_max = arguments.pop("max_result_size", _DEFAULT_MAX_RESULT_SIZE_BYTES)
+        try:
+            max_result_size = int(raw_max)
+        except (TypeError, ValueError):
+            max_result_size = _DEFAULT_MAX_RESULT_SIZE_BYTES
+        if max_result_size < 1 or max_result_size > _DEFAULT_MAX_RESULT_SIZE_BYTES:
+            max_result_size = _DEFAULT_MAX_RESULT_SIZE_BYTES
+
         # Apply schema migrations so this connector always sends
         # canonical parameter names even when the caller (or router)
         # didn't rewrite them yet.
         if apply_migration is not None:
-            arguments = apply_migration(
-                server_name=self.name,
-                tool_name=tool_name,
-                arguments=arguments,
-            )
+            try:
+                arguments = apply_migration(arguments)
+            except RuntimeError:
+                # No schema_migrations configured — identity is correct.
+                pass
 
         timeout_seconds = self.tool_timeouts.get(tool_name, self.tool_timeout)
 
@@ -581,6 +596,9 @@ class HTTPServerConnector:
                 f"[CALL_TOOL_RESULT_ERROR] tool={tool_name} error={result_error[:200]}"
             )
             raise RuntimeError(f"Tool call failed: {result_error}")
+
+        # Apply cumulative byte-budget limiter before returning the result.
+        result = apply_result_limit(result, max_result_size)
 
         self._last_error = None
         logger.info(f"[CALL_TOOL_SUCCESS] tool={tool_name}")
@@ -732,6 +750,9 @@ class HTTPServerConnector:
         self._last_health_check = time.time()
 
         if not self.is_running():
+            # Dead connector: self-heal via the existing reconnect backoff.
+            if await self.restart_if_needed():
+                self._notify_tools_changed()
             return
 
         try:
@@ -745,6 +766,10 @@ class HTTPServerConnector:
                 if self.session:
                     self.session.close()
                     self.session = None
+                return
+            # Success: the health check IS a tools/list — capture it instead
+            # of discarding it, so tool-cache staleness self-heals.
+            self._maybe_update_tools(response)
         except RuntimeError as e:
             logger.warning(f"Health check error for '{self.name}': {e}")
             self._initialized = False
@@ -752,6 +777,32 @@ class HTTPServerConnector:
             if self.session:
                 self.session.close()
                 self.session = None
+
+    def _maybe_update_tools(self, response: Dict[str, Any]) -> None:
+        new_tools = (response.get("result") or {}).get("tools")
+        if not new_tools:
+            return  # empty list = upstream mid-restart; keep last known tools
+
+        # ponytail: name-set comparison only; hash full schemas if schema
+        # drift (same names, changed inputs) ever bites.
+        old_names = sorted(t.get("name", "") for t in self._tools)
+        new_names = sorted(t.get("name", "") for t in new_tools)
+        if old_names == new_names:
+            return
+
+        logger.info(
+            f"[TOOLS_CHANGED] '{self.name}' tool list changed "
+            f"({len(old_names)} -> {len(new_names)}), refreshing manifest"
+        )
+        self.tools = new_tools
+        self._notify_tools_changed()
+
+    def _notify_tools_changed(self) -> None:
+        if self._on_tools_changed:
+            try:
+                self._on_tools_changed(self.name, len(self._tools))
+            except Exception as e:
+                logger.error(f"tools-changed callback failed for '{self.name}': {e}")
 
     def update_config(
         self,
