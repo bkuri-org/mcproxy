@@ -165,6 +165,17 @@ class HealthTracker:
 
         return None
 
+    def check(self, tool: str) -> Optional[str]:
+        """Reason string when *tool* is unhealthy, ``None`` otherwise.
+
+        ponytail: record() is never called yet, so this always returns None
+        until call outcomes get wired in.
+        """
+        result = self.is_unhealthy(
+            tool, threshold=0.5, min_samples=20, min_distinct_callers=2
+        )
+        return result[1] if result else None
+
     # ------------------------------------------------------------------
     # Public queries – used by inspect.py
     # ------------------------------------------------------------------
