@@ -19,10 +19,12 @@ echo "  → Rebuilding image..."
 # Build with pinned venv python (VENV_PYTHON ARG required; no PATH fallback)
 sudo podman build -t localhost/mcproxy:latest . 2>&1 | tail -2
 
-# 3. Copy config to bind-mounted config directory
-echo "  → Syncing config..."
+# 3. Config is bind-mounted from the live directory — never copy over it.
+# The live config (/srv/containers/mcproxy/config/mcproxy.json on server2) is
+# the source of truth and hot-reloads; a repo-config copy here CLOBBERED live
+# once (2026-08-20 outage: memory ns vanished). Only ensure the dir exists.
+echo "  → Ensuring config dir (live config is authoritative)..."
 sudo mkdir -p config
-sudo cp mcproxy.json config/mcproxy.json
 # Preserve .env if it doesn't exist
 if [ ! -f config/.env ]; then
     sudo cp .env.example config/.env 2>/dev/null || true
