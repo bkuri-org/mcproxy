@@ -263,6 +263,13 @@ def _apply(result: Any, budget: _Budget, depth: int) -> Any:
                 return placeholder
             return _TRUNCATION_MARKER
 
+        # Budget exhaustion is the sole governor: a string that fits the
+        # remaining budget passes through verbatim (JSON/log summarization
+        # only kicks in when it would not fit).
+        if budget.remaining >= _utf8_len(result):
+            budget.consume(_utf8_len(result))
+            return result
+
         if _is_json(result):
             return _summarize_json(result, budget)
 
