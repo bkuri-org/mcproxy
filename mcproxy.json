@@ -199,42 +199,6 @@
       ],
       "isolated": false
     },
-    "ops": {
-      "servers": [
-        "fear_greed_index",
-        "sequential_thinking",
-        "atom_of_thoughts",
-        "think_tool",
-        "coinstats",
-        "llms_txt",
-        "youtube",
-        "wikipedia",
-        "asset_price",
-        "pure_md",
-        "playwright",
-        "perplexity_sonar",
-        "jesse",
-        "home_assistant",
-        "zilliqa_insights",
-        "coinmarketcap",
-        "termux"
-      ],
-      "isolated": false
-    },
-    "default": {
-      "servers": [
-        "sequential_thinking",
-        "atom_of_thoughts",
-        "think_tool",
-        "kontra",
-        "wikipedia",
-        "pure_md",
-        "youtube",
-        "llms_txt",
-        "imo"
-      ],
-      "isolated": false
-    },
     "memory": {
       "servers": [
         "imo"
@@ -257,13 +221,33 @@
         "financial",
         "docs",
         "web",
-        "!trading"
+        "trading"
       ]
     },
     "automation": {
       "namespaces": [
         "thinking",
         "home"
+      ]
+    },
+    "default": {
+      "namespaces": [
+        "thinking",
+        "docs",
+        "web"
+      ]
+    },
+    "ops": {
+      "namespaces": [
+        "thinking",
+        "financial",
+        "web",
+        "docs",
+        "browser",
+        "trading",
+        "home",
+        "android",
+        "memory"
       ]
     }
   },
