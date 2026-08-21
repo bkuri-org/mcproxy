@@ -279,10 +279,16 @@ Groups are plain unions of namespaces. Listing an isolated namespace in a group 
 
 | Endpoint | Servers |
 |----------|---------|
-| `/sse` | Unnamespaced + non-isolated |
+| `/sse` | `default` group: thinking + docs + web (resolved from groups first, then namespaces) |
+| `/sse/memory` | memory namespace only (imo) |
 | `/sse/docs` | docs namespace only |
 | `/sse/trading` | trading (isolated) only |
 | `/sse/home` | home namespace only |
+
+imo (memory ns) is deliberately **not** on the default surface — clients need
+`X-Namespace: memory` or `ops` (group over all namespaces) for `mcproxy_imo__*`
+tools. Sessions snapshot their tool list at connect; config hot-reloads affect
+new connections only.
 
 Use `X-Namespace: dev` header to override endpoint.
 
