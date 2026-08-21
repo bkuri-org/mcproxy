@@ -422,6 +422,12 @@ class HTTPServerConnector:
             self.session = requests.Session()
             self.session.headers.update(self.headers)
 
+            # initialize establishes a NEW session: never replay a stale
+            # mcp-session-id (upstream 404s unknown ids — the health-check
+            # self-heal path closes the session object but not the id, and
+            # replaying it here looped initialize→404 forever).
+            self.session_id = None
+
             init_response = self._send_request(
                 method="initialize",
                 params={
@@ -629,7 +635,9 @@ class HTTPServerConnector:
             payload["params"] = params
 
         headers = {"Content-Type": "application/json"}
-        if self.session_id:
+        # initialize establishes a new session — never attach a (possibly
+        # stale) id to it; upstreams 404 unknown session ids (MCP spec).
+        if self.session_id and method != "initialize":
             headers["mcp-session-id"] = self.session_id
 
         try:
