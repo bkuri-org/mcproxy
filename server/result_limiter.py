@@ -38,7 +38,6 @@ _JSON_SUMMARY_SUFFIX = ">"
 _LOG_SUMMARY_FIRST_LINES = 5
 _LOG_SUMMARY_LAST_LINES = 2
 _BASE64_MIN_LENGTH = 100
-_PER_ITEM_BUDGET_FRACTION = 0.10
 _PER_ITEM_MIN_BYTES = 64
 _STRUCTURAL_OVERHEAD_BRACKETS = 2        # [] or {}
 _STRUCTURAL_OVERHEAD_PER_LIST_ITEM = 2   # comma + space
@@ -298,9 +297,15 @@ def _apply_sequence(items: list, budget: _Budget, depth: int) -> list:
     if not budget.consume(_STRUCTURAL_OVERHEAD_BRACKETS):
         return [_TRUNCATION_MARKER]
 
+    # Per-item cap scales with collection size: an element may take at most
+    # its fair share of the remaining budget. A flat fraction here would cap a
+    # single-payload result (the common MCP shape: one content text) at that
+    # fraction — e.g. a 1-item list at 10% made the 50 KB budget effectively
+    # 5 KB and shape-previewed every larger tool result. len==1 → full budget;
+    # the cumulative budget stays the sole governor.
     per_item_cap = max(
         _PER_ITEM_MIN_BYTES,
-        int(budget.remaining * _PER_ITEM_BUDGET_FRACTION),
+        budget.remaining // max(1, len(items)),
     )
 
     limited: list[Any] = []
@@ -335,9 +340,11 @@ def _apply_dict(mapping: dict, budget: _Budget, depth: int) -> dict:
     if not budget.consume(_STRUCTURAL_OVERHEAD_BRACKETS):
         return {_TRUNCATION_MARKER: _TRUNCATION_MARKER}
 
+    # Same size-scaled cap as _apply_sequence (see note there): a dict with one
+    # big value (content[0]) must not lose 90% of the budget to the cap.
     per_item_cap = max(
         _PER_ITEM_MIN_BYTES,
-        int(budget.remaining * _PER_ITEM_BUDGET_FRACTION),
+        budget.remaining // max(1, len(mapping)),
     )
 
     limited: dict[str, Any] = {}
