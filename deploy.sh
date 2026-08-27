@@ -52,6 +52,18 @@ if [ -z "$IMAGE_USER" ] || [ "$IMAGE_USER" = "root" ] || [ "$IMAGE_USER" = "0" ]
 fi
 echo "  ✓ Image runs as User=$IMAGE_USER (non-root)"
 
+# 4c. Verify noexec trap dir IN THE IMAGE (Dockerfile creates it; it never exists
+#     on the host — the old host-side check ran after the container swap and
+#     aborted every deploy halfway, 2026-08-27)
+echo "  → Verifying noexec guard in image..."
+if ! sudo podman run --rm --entrypoint /bin/sh localhost/mcproxy:latest -c \
+    'test -d /usr/local/noexec && cd /usr/local/noexec && for b in sh bash python python3 dash ash; do test -L "$b" || exit 1; done' \
+    2>/dev/null; then
+    echo "  ❌ /usr/local/noexec guard missing or incomplete in image (dir or trap symlinks)"
+    exit 1
+fi
+echo "  ✓ noexec guard verified in image (dir + 6 trap symlinks)"
+
 sudo podman run -d --replace --name mcproxy \
   --log-driver=k8s-file \
   --network=mcp-net -p 12010:12010 \
@@ -70,22 +82,7 @@ sudo podman run -d --replace --name mcproxy \
   localhost/mcproxy:latest \
   /usr/local/bin/mcproxy --log --port 12010 --host 0.0.0.0 --config /app/config/mcproxy.json
 
-# 5. Generate systemd service (Quadlet doesn't generate .service for mcproxy)
-# 7. Verify /usr/local/noexec noexec guard dir exists on host (created by Dockerfile,
-#    but ensure it's present for bind-mount or volume contexts)
-echo "  → Verifying noexec guard dir..."
-if ! sudo test -d /usr/local/noexec; then
-    echo "  ⚠  /usr/local/noexec missing — container image may not have been built correctly"
-    exit 1
-fi
-sudo ls -ld /usr/local/noexec
-for _bin in sh bash python python3 dash ash; do
-    if ! sudo test -L /usr/local/noexec/$_bin; then
-        echo "  ⚠  /usr/local/noexec/$_bin symlink missing"
-        exit 1
-    fi
-done
-
+# 5. Regenerate systemd service (Quadlet doesn't generate .service for mcproxy)
 echo "  → Creating systemd service..."
 sudo podman generate systemd --new --name mcproxy \
   --restart-policy=always \
