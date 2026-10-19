@@ -27,6 +27,12 @@ from server.sse import (
     get_session_id_from_request,
     validate_namespace,
 )
+from exposure import (
+    DORMANT_TOOL_NAME,
+    apply_exposure,
+    get_exposure_settings,
+    shelf_text,
+)
 from .tools import (
     META_TOOLS,
     handle_tools_call as meta_handle_tools_call,
@@ -156,11 +162,17 @@ async def handle_tools_list(
     capability_registry: Optional[CapabilityRegistry] = None,
     params: Optional[Dict[str, Any]] = None,
     config: Optional[Dict[str, Any]] = None,
+    session_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Handle tools/list request - return dispatch meta-tool + per-server tools.
 
     Auto-truncates schemas when tool count exceeds list_brief_threshold (config).
     Supports optional params for override: brief=true, full=true, max_tools=N.
+
+    With an active exposure policy (config exposure block, per-namespace
+    opt-in), returns only the exposed hot-set with full schemas plus a
+    synthetic 'dormant' tool whose description is the dormant shelf, and
+    carries ttlMs + seat-scoped cacheScope result fields.
 
     Returns the dispatch meta-tool plus individual upstream tools prefixed
     with server name (e.g., perplexity_sonar__perplexity_search_web).
@@ -172,6 +184,7 @@ async def handle_tools_list(
         capability_registry: Capability registry for namespace resolution
         params: Optional params from JSON-RPC request (brief, full, max_tools)
         config: mcproxy.json configuration (for list_brief_threshold)
+        session_id: Optional seat ID (X-Session-ID) for exposure promotion state
 
     Returns:
         MCP response with tools list
@@ -194,6 +207,10 @@ async def handle_tools_list(
     returned_tools = 0
     skipped_by_server: Dict[str, int] = {}
 
+    exposure_settings = get_exposure_settings(config, namespace)
+    dormant_entries: list = []
+    dormant_overflow = None
+
     # Add per-server tools from manifest, filtered by namespace
     if capability_registry and capability_registry._manifest:
         allowed_servers = None
@@ -204,49 +221,79 @@ async def handle_tools_list(
 
         tools_by_server = capability_registry._manifest.get("tools_by_server", {})
 
-        # First pass: count tools per server
-        server_tool_counts = {
-            name: len(tools)
-            for name, tools in tools_by_server.items()
-            if allowed_servers is None or name in allowed_servers
-        }
-        total_tools = sum(server_tool_counts.values())
-
-        # Determine detail mode
-        force_brief = explicit_brief or (
-            not explicit_full and total_tools > list_brief_threshold
-        )
-
-        for server_name, server_tools in tools_by_server.items():
-            if allowed_servers is not None and server_name not in allowed_servers:
-                continue
-
-            server_count = len(server_tools)
-
-            # Collapse is disabled — agents need to see all tools for discoverability.
-            # Brief mode truncates descriptions instead of hiding tools behind wildcards.
-
-            for i, tool in enumerate(server_tools):
-                if not isinstance(tool, dict) or "name" not in tool:
+        if exposure_settings:
+            # Exposure policy active: exposed hot-set + dormant shelf,
+            # deterministic (server, tool name) ordering.
+            exposed_entries, dormant_entries, dormant_overflow = apply_exposure(
+                capability_registry._manifest,
+                allowed_servers,
+                exposure_settings,
+                session_id or "anonymous",
+                transform_tool_name,
+            )
+            tools.extend(exposed_entries)
+            total_tools = len(exposed_entries) + sum(
+                1
+                for srv in tools_by_server
+                if allowed_servers is None or srv in allowed_servers
+                for t in tools_by_server[srv]
+                if isinstance(t, dict) and "name" in t
+            )
+            returned_tools = len(exposed_entries)
+        else:
+            for server_name, server_tools in tools_by_server.items():
+                if allowed_servers is not None and server_name not in allowed_servers:
                     continue
 
-                # Apply per-server prefix transforms
-                transformed_name = transform_tool_name(server_name, tool["name"])
-                prefixed_name = f"{server_name}__{transformed_name}"
+                # Collapse is disabled — agents need to see all tools for discoverability.
+                # Brief mode truncates descriptions instead of hiding tools behind wildcards.
 
-                tool_entry: Dict[str, Any] = {
-                    "name": prefixed_name,
-                    "description": tool.get("description", ""),
-                }
+                for i, tool in enumerate(server_tools):
+                    if not isinstance(tool, dict) or "name" not in tool:
+                        continue
 
-                # Always include inputSchema (MCP protocol requires it)
-                tool_entry["inputSchema"] = tool.get("inputSchema", {})
+                    # Apply per-server prefix transforms
+                    transformed_name = transform_tool_name(server_name, tool["name"])
+                    prefixed_name = f"{server_name}__{transformed_name}"
 
-                tools.append(tool_entry)
-                returned_tools += 1
+                    tool_entry: Dict[str, Any] = {
+                        "name": prefixed_name,
+                        "description": tool.get("description", ""),
+                    }
+
+                    # Always include inputSchema (MCP protocol requires it)
+                    tool_entry["inputSchema"] = tool.get("inputSchema", {})
+
+                    tools.append(tool_entry)
+                    returned_tools += 1
+            total_tools = returned_tools
+
+    # Determine detail mode
+    force_brief = explicit_brief or (
+        not explicit_full and total_tools > list_brief_threshold
+    )
 
     # Build response with metadata
     result_data: Dict[str, Any] = {"tools": tools}
+
+    if exposure_settings:
+        # v2-shaped metadata (harmless extras for v1 clients). Seat-scoped:
+        # per-session promotion makes this list vary per seat.
+        result_data["ttlMs"] = 60000
+        result_data["cacheScope"] = f"seat:{session_id or 'anonymous'}"
+        if dormant_entries:
+            result_data["dormant"] = dormant_entries
+            # Shelf rides as a synthetic tool entry so v1 clients (which drop
+            # unknown result fields) still show it to the model.
+            tools.append(
+                {
+                    "name": DORMANT_TOOL_NAME,
+                    "description": shelf_text(dormant_entries, dormant_overflow),
+                    "inputSchema": {"type": "object", "properties": {}},
+                }
+            )
+        if dormant_overflow:
+            result_data["dormant_overflow"] = dormant_overflow
 
     if total_tools > 0:
         result_data["total"] = total_tools
@@ -406,6 +453,7 @@ def create_message_handler(
                     capability_registry=capability_registry,
                     params=params,
                     config=_mcproxy_config,
+                    session_id=session_id,
                 )
             elif method == "tools/call":
                 return await handle_tools_call(

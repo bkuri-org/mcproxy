@@ -140,6 +140,16 @@
   "search": {
     "list_brief_threshold": 500
   },
+  "exposure": {
+    "enabled": true,
+    "promoted_cap_per_session": 15,
+    "dormant_max_lines": 50,
+    "namespaces": {
+      "thinking": {
+        "exposed": ["sequential_thinking", "think_tool"]
+      }
+    }
+  },
   "namespaces": {
     "thinking": {
       "servers": [
