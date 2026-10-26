@@ -17,18 +17,16 @@ from utils.fuzzy_match import suggest_best_match
 from exposure import (
     DORMANT_TOOL_NAME,
     check_direct_call,
-    get_exposure_settings,
-    promotion_state,
     promote_from_inspect,
     shelf_call_response,
 )
 from aliases import (
     alias_state,
-    resolve_alias_target,
     resolve_core_tool,
 )
 
 from .execute import handle_execute, handle_trace
+from .alias_routing import resolve_alias_call
 from .help import handle_help
 from .inspect import handle_inspect
 from schema_migration import apply_migration
@@ -53,50 +51,6 @@ def _is_dispatch_tool(tool_name: str) -> bool:
     # Strip any pi-level prefix (e.g., mcproxy_dispatch → dispatch)
     canonical = tool_name.split("_", 1)[-1] if "_" in tool_name else tool_name
     return canonical in DISPATCH_TOOL_NAMES
-
-
-async def _resolve_alias_call(
-    msg_id: Any,
-    tool_name: str,
-    arguments: Dict[str, Any],
-    namespace: Optional[str],
-    capability_registry: Optional[CapabilityRegistry],
-    session_id: Optional[str],
-    mcproxy_config: Optional[Dict[str, Any]],
-    tool_executor: Optional[Callable] = None,
-) -> Optional[Dict[str, Any]]:
-    """Route a core-tool or alias call to its target; None when not one.
-
-    Core tools (execute/search/help) rewrite to dispatch meta-actions.
-    Manual + auto aliases rewrite to the full server__tool name and execute
-    directly (aliases are always exposed — no dormant teach error).
-    """
-    rewritten = resolve_core_tool(tool_name, arguments)
-    if rewritten:
-        return None  # handled by the dispatch route below
-
-    target = resolve_alias_target(
-        tool_name, mcproxy_config, capability_registry, namespace
-    )
-    if not target:
-        return None
-
-    # Aliases are always exposed: pre-promote so check_direct_call passes.
-    seat = session_id or "anonymous"
-    exposure_settings = get_exposure_settings(mcproxy_config, namespace)
-    if exposure_settings:
-        promotion_state.promote(seat, target, exposure_settings["cap"])
-    logger.info(f"[ALIASES] {tool_name} → {target} (seat={seat})")
-    return await _handle_direct_call(
-        msg_id,
-        target,
-        arguments,
-        namespace=namespace,
-        capability_registry=capability_registry,
-        tool_executor=tool_executor,
-        session_id=session_id,
-        mcproxy_config=mcproxy_config,
-    )
 
 
 def _parse_direct_tool(tool_name: str) -> Optional[tuple[str, str]]:
@@ -214,8 +168,8 @@ async def _handle_direct_call(
             },
         }
 
-    # Usage tracking for auto-alias ranking (cheap, in-memory) — only for
-    # calls that pass every block gate, so blocked tools never skew ranking
+    # Usage tracking for auto-alias ranking (cheap, in-memory) — gated after
+    # exposure → executor → health, so blocked tools never skew ranking
     alias_state.record(prefixed_transformed)
 
     try:
@@ -496,7 +450,7 @@ async def handle_tools_call(
             and tool_name not in DISPATCH_TOOL_NAMES
             and tool_name.replace("mcproxy_", "") not in DISPATCH_TOOL_NAMES
         ):
-            response = await _resolve_alias_call(
+            response = await resolve_alias_call(
                 msg_id,
                 tool_name,
                 arguments,

@@ -369,6 +369,34 @@ def test_unknown_short_name_still_errors():
     assert result["error"]["code"] == -32601
 
 
+def test_alias_call_with_null_config_errors_and_promotes_nothing():
+    """Router null-guards mcproxy_config before alias settings access."""
+    registry = make_registry()
+    result = _call(registry, "recall", {"rid": "r1"}, config=None, executor=None)
+    assert result["error"]["code"] == -32601
+    assert "imo__recall" not in promotion_state.promoted("s1")
+
+
+def test_blocked_dormant_tool_is_never_recorded():
+    """alias_state.record runs only for calls that pass the exposure gate."""
+    from server.handlers.tools.router import _handle_direct_call
+
+    registry = make_registry()
+    cfg = {"exposure": {"enabled": True,
+                        "namespaces": {"thinking": {"exposed": []}}}}
+
+    async def run():
+        return await _handle_direct_call(
+            7, "alpha__run", {}, namespace="thinking",
+            capability_registry=registry, tool_executor=None,
+            session_id="s2", mcproxy_config=cfg,
+        )
+
+    result = asyncio.run(run())
+    # Dormant tool: teach error, never recorded for auto-alias ranking
+    assert result["error"]["data"]["status"] == "dormant"
+    assert alias_state.usage().get("alpha__run", 0) == 0
+
 # ============================================================================
 # Exposure policy interaction
 # ============================================================================
