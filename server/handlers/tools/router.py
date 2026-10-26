@@ -11,9 +11,15 @@ from typing import Any, Callable, Dict, Optional
 from logging_config import get_logger
 from manifest import CapabilityRegistry
 from manifest.example_gen import generate_tool_example
-from tool_aggregator import untransform_tool_name
+from tool_aggregator import transform_tool_name, untransform_tool_name
 from utils.param_normalize import normalize_params
 from utils.fuzzy_match import suggest_best_match
+from exposure import (
+    DORMANT_TOOL_NAME,
+    check_direct_call,
+    promote_from_inspect,
+    shelf_call_response,
+)
 
 from .execute import handle_execute, handle_trace
 from .help import handle_help
@@ -69,10 +75,14 @@ async def _handle_direct_call(
     namespace: Optional[str] = None,
     capability_registry: Optional[CapabilityRegistry] = None,
     tool_executor: Optional[Callable] = None,
+    session_id: Optional[str] = None,
+    mcproxy_config: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Handle a direct tool call (server__tool pattern).
 
     Validates namespace access and routes directly to upstream server.
+    With an active exposure policy, dormant tools get a teach error and are
+    auto-promoted into the calling seat's exposed set.
 
     Args:
         msg_id: JSON-RPC message ID
@@ -81,6 +91,8 @@ async def _handle_direct_call(
         namespace: Connection namespace/group for access control
         capability_registry: Capability registry for namespace validation
         tool_executor: Callable to execute tools on upstream servers
+        session_id: Optional seat ID (X-Session-ID) for exposure promotion state
+        mcproxy_config: mcproxy.json configuration (exposure policy)
 
     Returns:
         MCP response with tool result or error
@@ -117,6 +129,17 @@ async def _handle_direct_call(
                     f"in namespace/group '{namespace}'",
                 },
             }
+
+    # Exposure policy: block dormant tools with a teach error (auto-promotes)
+    blocked = check_direct_call(
+        msg_id,
+        mcproxy_config,
+        namespace,
+        session_id,
+        f"{server_name}__{transform_tool_name(server_name, tool)}",
+    )
+    if blocked:
+        return blocked
 
     # Execute directly on upstream server
     if not tool_executor:
@@ -393,6 +416,17 @@ async def handle_tools_call(
                 f"args={list(arguments.keys())}"
             )
 
+        # Route 0: Synthetic dormant-shelf tool (exposure policy)
+        if tool_name == DORMANT_TOOL_NAME:
+            return shelf_call_response(
+                msg_id,
+                namespace,
+                session_id,
+                capability_registry,
+                mcproxy_config,
+                transform_tool_name,
+            )
+
         # Route 1: Direct tool call (server__tool pattern)
         if TOOL_SEPARATOR in tool_name and not _is_dispatch_tool(tool_name):
             return await _handle_direct_call(
@@ -402,6 +436,8 @@ async def handle_tools_call(
                 namespace=namespace,
                 capability_registry=capability_registry,
                 tool_executor=tool_executor,
+                session_id=session_id,
+                mcproxy_config=mcproxy_config,
             )
 
         # Route 2: Dispatch meta-tool (post-migration tool_name may
@@ -454,6 +490,14 @@ async def handle_tools_call(
             )
 
         elif action == "inspect":
+            # Describe auto-promotes the target into the seat's exposed set
+            promote_from_inspect(
+                mcproxy_config,
+                namespace,
+                session_id,
+                arguments,
+                capability_registry,
+            )
             return await handle_inspect(
                 msg_id,
                 arguments,
