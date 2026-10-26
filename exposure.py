@@ -15,6 +15,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from logging_config import get_logger
 
+from aliases import UNLIMITED_PROMOTION_CAP  # noqa: E402
+
 logger = get_logger(__name__)
 
 DORMANT_TOOL_NAME = "dormant"
@@ -84,7 +86,13 @@ def get_exposure_settings(config: Optional[dict], namespace: Optional[str]) -> O
         return None
     return {
         "exposed": list(ns_cfg.get("exposed") or []),
-        "cap": int(exp.get("promoted_cap_per_session", DEFAULT_PROMOTED_CAP)),
+        # With the alias layer active, the alias list IS the cap on the
+        # exposed set — per-seat promotion is effectively uncapped.
+        "cap": (
+            UNLIMITED_PROMOTION_CAP
+            if isinstance(config.get("aliases"), dict)
+            else int(exp.get("promoted_cap_per_session", DEFAULT_PROMOTED_CAP))
+        ),
         "dormant_lines": int(exp.get("dormant_max_lines", DEFAULT_DORMANT_LINES)),
     }
 

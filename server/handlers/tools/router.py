@@ -17,8 +17,16 @@ from utils.fuzzy_match import suggest_best_match
 from exposure import (
     DORMANT_TOOL_NAME,
     check_direct_call,
+    get_exposure_settings,
+    promotion_state,
     promote_from_inspect,
     shelf_call_response,
+)
+from aliases import (
+    alias_state,
+    get_alias_settings,
+    resolve_alias,
+    resolve_core_tool,
 )
 
 from .execute import handle_execute, handle_trace
@@ -46,6 +54,57 @@ def _is_dispatch_tool(tool_name: str) -> bool:
     # Strip any pi-level prefix (e.g., mcproxy_dispatch → dispatch)
     canonical = tool_name.split("_", 1)[-1] if "_" in tool_name else tool_name
     return canonical in DISPATCH_TOOL_NAMES
+
+
+async def _resolve_alias_call(
+    msg_id: Any,
+    tool_name: str,
+    arguments: Dict[str, Any],
+    namespace: Optional[str],
+    capability_registry: Optional[CapabilityRegistry],
+    session_id: Optional[str],
+    mcproxy_config: Optional[Dict[str, Any]],
+    tool_executor: Optional[Callable] = None,
+) -> Optional[Dict[str, Any]]:
+    """Route a core-tool or alias call to its target; None when not one.
+
+    Core tools (execute/search/help) rewrite to dispatch meta-actions.
+    Manual + auto aliases rewrite to the full server__tool name and execute
+    directly (aliases are always exposed — no dormant teach error).
+    """
+    rewritten = resolve_core_tool(tool_name, arguments)
+    if rewritten:
+        return None  # handled by the dispatch route below
+
+    settings = get_alias_settings(mcproxy_config)
+    if not settings or not capability_registry:
+        return None
+
+    allowed_servers = None
+    if namespace:
+        allowed_servers, _ = capability_registry.resolve_namespace_to_servers(namespace)
+    target = resolve_alias(
+        tool_name, mcproxy_config, capability_registry._manifest or {}, allowed_servers
+    )
+    if not target:
+        return None
+
+    # Aliases are always exposed: pre-promote so check_direct_call passes.
+    seat = session_id or "anonymous"
+    exposure_settings = get_exposure_settings(mcproxy_config, namespace)
+    if exposure_settings:
+        promotion_state.promote(seat, target, exposure_settings["cap"])
+    logger.info(f"[ALIASES] {tool_name} → {target} (seat={seat})")
+    return await _handle_direct_call(
+        msg_id,
+        target,
+        arguments,
+        namespace=namespace,
+        capability_registry=capability_registry,
+        tool_executor=tool_executor,
+        session_id=session_id,
+        mcproxy_config=mcproxy_config,
+    )
 
 
 def _parse_direct_tool(tool_name: str) -> Optional[tuple[str, str]]:
@@ -131,15 +190,19 @@ async def _handle_direct_call(
             }
 
     # Exposure policy: block dormant tools with a teach error (auto-promotes)
+    prefixed_transformed = f"{server_name}__{transform_tool_name(server_name, tool)}"
     blocked = check_direct_call(
         msg_id,
         mcproxy_config,
         namespace,
         session_id,
-        f"{server_name}__{transform_tool_name(server_name, tool)}",
+        prefixed_transformed,
     )
     if blocked:
         return blocked
+
+    # Usage tracking for auto-alias ranking (cheap, in-memory)
+    alias_state.record(prefixed_transformed)
 
     # Execute directly on upstream server
     if not tool_executor:
@@ -426,6 +489,32 @@ async def handle_tools_call(
                 mcproxy_config,
                 transform_tool_name,
             )
+
+        # Route 0.5: Core tools rewrite to dispatch meta-actions (help is
+        # merged with inspect: server/tool args → inspect, else help).
+        rewritten = resolve_core_tool(tool_name, arguments)
+        if rewritten:
+            tool_name, arguments = rewritten
+
+        # Route 0.6: Alias calls (short names from tools/list) resolve to the
+        # full server__tool target and execute directly — always exposed.
+        if (
+            TOOL_SEPARATOR not in tool_name
+            and tool_name not in DISPATCH_TOOL_NAMES
+            and tool_name.replace("mcproxy_", "") not in DISPATCH_TOOL_NAMES
+        ):
+            response = await _resolve_alias_call(
+                msg_id,
+                tool_name,
+                arguments,
+                namespace=namespace,
+                capability_registry=capability_registry,
+                session_id=session_id,
+                mcproxy_config=mcproxy_config,
+                tool_executor=tool_executor,
+            )
+            if response is not None:
+                return response
 
         # Route 1: Direct tool call (server__tool pattern)
         if TOOL_SEPARATOR in tool_name and not _is_dispatch_tool(tool_name):
