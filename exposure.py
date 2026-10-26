@@ -90,7 +90,7 @@ def get_exposure_settings(config: Optional[dict], namespace: Optional[str]) -> O
         # exposed set — per-seat promotion is effectively uncapped.
         "cap": (
             UNLIMITED_PROMOTION_CAP
-            if isinstance(config.get("aliases"), dict)
+            if config and isinstance(config.get("aliases"), dict)
             else int(exp.get("promoted_cap_per_session", DEFAULT_PROMOTED_CAP))
         ),
         "dormant_lines": int(exp.get("dormant_max_lines", DEFAULT_DORMANT_LINES)),

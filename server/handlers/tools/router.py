@@ -24,8 +24,7 @@ from exposure import (
 )
 from aliases import (
     alias_state,
-    get_alias_settings,
-    resolve_alias,
+    resolve_alias_target,
     resolve_core_tool,
 )
 
@@ -76,15 +75,8 @@ async def _resolve_alias_call(
     if rewritten:
         return None  # handled by the dispatch route below
 
-    settings = get_alias_settings(mcproxy_config)
-    if not settings or not capability_registry:
-        return None
-
-    allowed_servers = None
-    if namespace:
-        allowed_servers, _ = capability_registry.resolve_namespace_to_servers(namespace)
-    target = resolve_alias(
-        tool_name, mcproxy_config, capability_registry._manifest or {}, allowed_servers
+    target = resolve_alias_target(
+        tool_name, mcproxy_config, capability_registry, namespace
     )
     if not target:
         return None
@@ -201,9 +193,6 @@ async def _handle_direct_call(
     if blocked:
         return blocked
 
-    # Usage tracking for auto-alias ranking (cheap, in-memory)
-    alias_state.record(prefixed_transformed)
-
     # Execute directly on upstream server
     if not tool_executor:
         return {
@@ -224,6 +213,10 @@ async def _handle_direct_call(
                 "message": f"Tool '{server_name}__{tool}' temporarily unavailable: {health_reason}",
             },
         }
+
+    # Usage tracking for auto-alias ranking (cheap, in-memory) — only for
+    # calls that pass every block gate, so blocked tools never skew ranking
+    alias_state.record(prefixed_transformed)
 
     try:
         # Untransform the tool name to recover the original upstream name

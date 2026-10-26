@@ -267,3 +267,27 @@ def resolve_alias(
         return None
     alias_map = _alias_targets(manifest, allowed_servers, settings, alias_state.usage())
     return alias_map.get(tool_name)
+
+
+def resolve_alias_target(
+    tool_name: str,
+    mcproxy_config: Optional[dict],
+    capability_registry: Any,
+    namespace: Optional[str],
+) -> Optional[str]:
+    """Resolve a short alias to its full server__tool target, or None.
+
+    Router-side wrapper: turns namespace + capability registry into the
+    arguments resolve_alias needs, keeping alias logic out of the router.
+    """
+    if not mcproxy_config or capability_registry is None:
+        return None
+    allowed_servers = None
+    if namespace:
+        allowed_servers, _ = capability_registry.resolve_namespace_to_servers(namespace)
+    return resolve_alias(
+        tool_name,
+        mcproxy_config,
+        capability_registry._manifest or {},
+        allowed_servers,
+    )
