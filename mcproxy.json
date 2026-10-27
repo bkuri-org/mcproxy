@@ -150,6 +150,15 @@
       }
     }
   },
+  "aliases": {
+    "manual": {
+      "recall": "imo__recall",
+      "remember": "imo__remember"
+    },
+    "auto": true,
+    "max_total": 10,
+    "warn_threshold": 8
+  },
   "namespaces": {
     "thinking": {
       "servers": [

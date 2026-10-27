@@ -33,6 +33,12 @@ from exposure import (
     get_exposure_settings,
     shelf_text,
 )
+from aliases import (
+    CORE_TOOL_DEFS,
+    alias_state,
+    build_aliases,
+    get_alias_settings,
+)
 from .tools import (
     META_TOOLS,
     handle_tools_call as meta_handle_tools_call,
@@ -240,6 +246,20 @@ async def handle_tools_list(
                 if isinstance(t, dict) and "name" in t
             )
             returned_tools = len(exposed_entries)
+
+            # Alias layer: core tools + manual/auto aliases ride on top of the
+            # exposed set. Off entirely when no "aliases" block in config.
+            alias_settings = get_alias_settings(config)
+            if alias_settings:
+                alias_entries, _alias_map = build_aliases(
+                    capability_registry._manifest,
+                    allowed_servers,
+                    alias_settings,
+                    alias_state.usage(),
+                )
+                tools.extend(CORE_TOOL_DEFS)
+                tools.extend(alias_entries)
+                returned_tools += len(CORE_TOOL_DEFS) + len(alias_entries)
         else:
             for server_name, server_tools in tools_by_server.items():
                 if allowed_servers is not None and server_name not in allowed_servers:
